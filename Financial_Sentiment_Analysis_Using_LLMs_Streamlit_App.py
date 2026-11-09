@@ -20,7 +20,7 @@ st.set_page_config(
 
 # App Title & Header
 st.title("📈 Financial Sentiment Analysis Using LLMs")
-st.markdown("A comprehensive evaluation pipeline comparing Groq LLMs (Zero-Shot & Few-Shot) against Fine-Tuned FinBERT on financial benchmark data[cite: 1].")
+st.markdown("A comprehensive evaluation pipeline comparing Groq LLMs (Zero-Shot & Few-Shot) against Fine-Tuned FinBERT on financial benchmark data.")
 st.markdown("---")
 
 # Initialize FinBERT Pipeline (Cached)
@@ -52,8 +52,8 @@ def load_and_split_data():
 try:
     df, train_df, test_df = load_and_split_data()
     total_records = df.shape[0]
-    train_shape = train_df.shape
-    test_shape = test_df.shape
+    train_shape = train_df.shape[0]
+    test_shape = test_df.shape[0]
 except Exception as e:
     # Fallback default values if offline/kaggle cache fails
     total_records = 4840
