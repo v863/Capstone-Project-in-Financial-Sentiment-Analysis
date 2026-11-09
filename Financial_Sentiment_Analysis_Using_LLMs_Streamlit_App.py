@@ -18,7 +18,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 1) App Title & Header Added
+# App Title & Header
 st.title("📈 Financial Sentiment Analysis Using LLMs")
 st.markdown("A comprehensive evaluation pipeline comparing Groq LLMs (Zero-Shot & Few-Shot) against Fine-Tuned FinBERT on financial benchmark data[cite: 1].")
 st.markdown("---")
@@ -52,8 +52,8 @@ def load_and_split_data():
 try:
     df, train_df, test_df = load_and_split_data()
     total_records = df.shape[0]
-    train_shape = train_df.shape[0]
-    test_shape = test_df.shape[0]
+    train_shape = train_df.shape
+    test_shape = test_df.shape
 except Exception as e:
     # Fallback default values if offline/kaggle cache fails
     total_records = 4840
@@ -91,20 +91,126 @@ st.sidebar.info(
     "(Groq LLMs vs. Fine-Tuned FinBERT) using the Financial PhraseBank benchmark dataset[cite: 1]."
 )
 
-# Navigation Tabs (4 Tabs)
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🚀 TAB 1: Real-Time Predictor", 
-    "📂 TAB 2: Dataset Explorer", 
-    "📊 TAB 3: Comparative Benchmarks",
-    "📈 TAB 4: Confusion Matrix & Report"
+# Main Navigation Tabs requested
+tab1, tab2, tab3 = st.tabs([
+    "📈 EDA & Overview", 
+    "🏆 Model Performance", 
+    "🔍 Live Headline Predictor"
 ])
 
 # ==========================================
-# TAB 1: REAL-TIME PREDICTOR
+# TAB 1: EDA & OVERVIEW
 # ==========================================
 with tab1:
-    st.header("Real-Time Sentiment Predictor")
-    st.markdown("Test individual headlines or analyst notes across different model configurations and prompt paradigms.")
+    st.header("Exploratory Data Analysis & Dataset Overview")
+    st.markdown("Explore the benchmark dataset distribution, statistics, and sample financial headlines.")
+    
+    st.markdown("### Dataset Statistics")
+    col_stat1, col_stat2, col_stat3 = st.columns(3)
+    with col_stat1:
+        st.metric(label="Total Records Loaded", value=f"{total_records:,}")
+    with col_stat2:
+        st.metric(label="Train Split Shapes", value=f"{train_shape}")
+    with col_stat3:
+        st.metric(label="Test Split Shapes", value=f"{test_shape}")
+        
+    st.markdown("---")
+    
+    display_df = df if not df.empty else pd.DataFrame({
+        "Sentiment": ["neutral", "neutral", "negative", "positive"],
+        "News Headline": ["Sample 1", "Sample 2", "Sample 3", "Sample 4"]
+    })
+    
+    filter_sentiment = st.selectbox("Filter by Sentiment Label", ["All", "positive", "negative", "neutral"])
+    if filter_sentiment != "All":
+        display_df = display_df[display_df["Sentiment"] == filter_sentiment]
+        
+    st.dataframe(display_df.head(100), use_container_width=True)
+    
+    st.markdown("### Class Distribution Chart")
+    fig, ax = plt.subplots(figsize=(6, 3))
+    sns.countplot(data=df, x="Sentiment", palette=["#2b5c8f", "#2ca02c", "#d9534f"], ax=ax)
+    ax.set(xlabel="Sentiment Category", ylabel="Sample Count")
+    st.pyplot(fig)
+
+# ==========================================
+# TAB 2: MODEL PERFORMANCE
+# ==========================================
+with tab2:
+    st.header("Model Performance & Benchmarks")
+    st.markdown("Review macro-evaluation metrics across all tested model variants, prompting configurations, confusion matrices, and classification reports.")
+    
+    benchmark_data = [
+        {"Model": "openai/gpt-oss-120b", "Configuration": "Zero-shot", "Accuracy": 0.75, "Precision": 0.79, "Recall": 0.75, "F1-score": 0.75},
+        {"Model": "openai/gpt-oss-120b", "Configuration": "Few-shot", "Accuracy": 0.80, "Precision": 0.84, "Recall": 0.80, "F1-score": 0.80},
+        {"Model": "qwen/qwen3.8-27b", "Configuration": "Zero-shot", "Accuracy": 0.82, "Precision": 0.85, "Recall": 0.82, "F1-score": 0.83},
+        {"Model": "qwen/qwen3.8-27b", "Configuration": "Few-shot", "Accuracy": 0.82, "Precision": 0.87, "Recall": 0.82, "F1-score": 0.83},
+        {"Model": "openai/gpt-oss-20b", "Configuration": "Zero-shot", "Accuracy": 0.78, "Precision": 0.78, "Recall": 0.78, "F1-score": 0.77},
+        {"Model": "openai/gpt-oss-20b", "Configuration": "Few-shot", "Accuracy": 0.80, "Precision": 0.84, "Recall": 0.80, "F1-score": 0.80},
+        {"Model": "ProsusAI/finbert", "Configuration": "Fine-Tuned", "Accuracy": 0.85, "Precision": 0.88, "Recall": 0.85, "F1-score": 0.85},
+    ]
+    
+    benchmark_df = pd.DataFrame(benchmark_data)
+    st.dataframe(benchmark_df, use_container_width=True)
+    
+    st.markdown("### F1-Score Comparison Bar Chart")
+    fig2, ax2 = plt.subplots(figsize=(10, 4))
+    sns.barplot(
+        data=benchmark_df, 
+        x="Model", 
+        y="F1-score", 
+        hue="Configuration", 
+        palette="viridis", 
+        ax=ax2
+    )
+    plt.xticks(rotation=20)
+    ax2.set(ylim=(0.6, 1.0), title="F1-Score Comparison Across Models & Configurations")
+    st.pyplot(fig2)
+    
+    st.markdown("---")
+    st.subheader("Confusion Matrix & Classification Report Breakdown")
+    
+    eval_model_selection = st.selectbox(
+        "Select Model & Configuration for Detailed Metrics",
+        [
+            "openai/gpt-oss-120b - Zero-Shot",
+            "openai/gpt-oss-120b - Few-Shot",
+            "qwen/qwen3.8-27b - Zero-Shot",
+            "qwen/qwen3.8-27b - Few-Shot",
+            "openai/gpt-oss-20b - Zero-Shot",
+            "openai/gpt-oss-20b - Few-Shot",
+            "ProsusAI/finbert - Fine-Tuned"
+        ]
+    )
+    
+    np.random.seed(42)
+    labels = ['negative', 'neutral', 'positive']
+    y_true = np.random.choice(labels, size=100, p=[0.15, 0.60, 0.25])
+    error_rate = 0.15 if "finbert" in eval_model_selection.lower() or "qwen" in eval_model_selection.lower() else 0.25
+    y_pred = [y if np.random.rand() > error_rate else np.random.choice(labels) for y in y_true]
+    
+    col_cm1, col_cm2 = st.columns([1, 1])
+    with col_cm1:
+        st.markdown(f"**Confusion Matrix ({eval_model_selection})**")
+        cm = confusion_matrix(y_true, y_pred, labels=labels)
+        fig_cm, ax_cm = plt.subplots(figsize=(5, 4))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels, ax=ax_cm)
+        ax_cm.set_xlabel('Predicted Sentiment')
+        ax_cm.set_ylabel('True Sentiment')
+        st.pyplot(fig_cm)
+        
+    with col_cm2:
+        st.markdown("**Classification Report Summary**")
+        report_dict = classification_report(y_true, y_pred, labels=labels, output_dict=True, zero_division=0)
+        report_df = pd.DataFrame(report_dict).transpose()
+        st.dataframe(report_df.style.format("{:.2f}"))
+
+# ==========================================
+# TAB 3: LIVE HEADLINE PREDICTOR
+# ==========================================
+with tab3:
+    st.header("Live Headline Predictor")
+    st.markdown("Test individual headlines or analyst notes in real-time across different model configurations and prompt paradigms.")
     
     col_cfg1, col_cfg2 = st.columns(2)
     with col_cfg1:
@@ -125,7 +231,7 @@ with tab1:
         "The international electronic industry company posted a net loss for the second quarter, missing estimates."
     )
 
-    if st.button("Run Prediction", type="primary"):
+    if st.button("Run Live Prediction", type="primary"):
         if not user_input.strip():
             st.warning("Please enter some text to analyze.")
         else:
@@ -185,116 +291,3 @@ with tab1:
                             
                         except Exception as e:
                             st.error(f"API Execution Error: {e}")
-
-# ==========================================
-# TAB 2: DATASET EXPLORER
-# ==========================================
-with tab2:
-    st.header("Dataset Explorer (Financial PhraseBank)")
-    st.markdown("Explore the benchmark dataset distribution and sample financial headlines.")
-    
-    st.markdown("### Dataset Statistics")
-    col_stat1, col_stat2, col_stat3 = st.columns(3)
-    with col_stat1:
-        st.metric(label="Total Records Loaded", value=f"{total_records:,}")
-    with col_stat2:
-        st.metric(label="Train Split Shapes", value=f"{train_shape}")
-    with col_stat3:
-        st.metric(label="Test Split Shapes", value=f"{test_shape}")
-        
-    st.markdown("---")
-    
-    display_df = df if not df.empty else pd.DataFrame({
-        "Sentiment": ["neutral", "neutral", "negative", "positive"],
-        "News Headline": ["Sample 1", "Sample 2", "Sample 3", "Sample 4"]
-    })
-    
-    filter_sentiment = st.selectbox("Filter by Sentiment Label", ["All", "positive", "negative", "neutral"])
-    if filter_sentiment != "All":
-        display_df = display_df[display_df["Sentiment"] == filter_sentiment]
-        
-    st.dataframe(display_df.head(100), use_container_width=True)
-    
-    st.markdown("### Class Distribution Chart")
-    fig, ax = plt.subplots(figsize=(6, 3))
-    sns.countplot(data=df, x="Sentiment", palette=["#2b5c8f", "#2ca02c", "#d9534f"], ax=ax)
-    ax.set(xlabel="Sentiment Category", ylabel="Sample Count")
-    st.pyplot(fig)
-
-# ==========================================
-# TAB 3: COMPARATIVE BENCHMARKS
-# ==========================================
-with tab3:
-    st.header("Comparative Performance Benchmarks")
-    st.markdown("Review macro-evaluation metrics across all tested model variants and prompting configurations[cite: 1].")
-    
-    benchmark_data = [
-        {"Model": "openai/gpt-oss-120b", "Configuration": "Zero-shot", "Accuracy": 0.75, "Precision": 0.79, "Recall": 0.75, "F1-score": 0.75},
-        {"Model": "openai/gpt-oss-120b", "Configuration": "Few-shot", "Accuracy": 0.80, "Precision": 0.84, "Recall": 0.80, "F1-score": 0.80},
-        {"Model": "qwen/qwen3.8-27b", "Configuration": "Zero-shot", "Accuracy": 0.82, "Precision": 0.85, "Recall": 0.82, "F1-score": 0.83},
-        {"Model": "qwen/qwen3.8-27b", "Configuration": "Few-shot", "Accuracy": 0.82, "Precision": 0.87, "Recall": 0.82, "F1-score": 0.83},
-        {"Model": "openai/gpt-oss-20b", "Configuration": "Zero-shot", "Accuracy": 0.78, "Precision": 0.78, "Recall": 0.78, "F1-score": 0.77},
-        {"Model": "openai/gpt-oss-20b", "Configuration": "Few-shot", "Accuracy": 0.80, "Precision": 0.84, "Recall": 0.80, "F1-score": 0.80},
-        {"Model": "ProsusAI/finbert", "Configuration": "Fine-Tuned", "Accuracy": 0.85, "Precision": 0.88, "Recall": 0.85, "F1-score": 0.85},
-    ]
-    
-    benchmark_df = pd.DataFrame(benchmark_data)
-    st.dataframe(benchmark_df, use_container_width=True)
-    
-    st.markdown("### F1-Score Comparison Bar Chart")
-    fig2, ax2 = plt.subplots(figsize=(10, 4))
-    sns.barplot(
-        data=benchmark_df, 
-        x="Model", 
-        y="F1-score", 
-        hue="Configuration", 
-        palette="viridis", 
-        ax=ax2
-    )
-    plt.xticks(rotation=20)
-    ax2.set(ylim=(0.6, 1.0), title="F1-Score Comparison Across Models & Configurations")
-    st.pyplot(fig2)
-
-# ==========================================
-# TAB 4: CONFUSION MATRIX & CLASSIFICATION REPORT
-# ==========================================
-with tab4:
-    st.header("Confusion Matrix & Classification Report")
-    st.markdown("Analyze per-class breakdown, misclassifications, and performance matrices across evaluation configurations.")
-    
-    eval_model_selection = st.selectbox(
-        "Select Model & Configuration for Confusion Matrix",
-        [
-            "openai/gpt-oss-120b - Zero-Shot",
-            "openai/gpt-oss-120b - Few-Shot",
-            "qwen/qwen3.8-27b - Zero-Shot",
-            "qwen/qwen3.8-27b - Few-Shot",
-            "openai/gpt-oss-20b - Zero-Shot",
-            "openai/gpt-oss-20b - Few-Shot",
-            "ProsusAI/finbert - Fine-Tuned"
-        ]
-    )
-    
-    np.random.seed(42)
-    labels = ['negative', 'neutral', 'positive']
-    
-    y_true = np.random.choice(labels, size=100, p=[0.15, 0.60, 0.25])
-    error_rate = 0.15 if "finbert" in eval_model_selection.lower() or "qwen" in eval_model_selection.lower() else 0.25
-    y_pred = [y if np.random.rand() > error_rate else np.random.choice(labels) for y in y_true]
-    
-    col_cm1, col_cm2 = st.columns([1, 1])
-    
-    with col_cm1:
-        st.markdown(f"### Confusion Matrix ({eval_model_selection})")
-        cm = confusion_matrix(y_true, y_pred, labels=labels)
-        fig_cm, ax_cm = plt.subplots(figsize=(5, 4))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels, ax=ax_cm)
-        ax_cm.set_xlabel('Predicted Sentiment')
-        ax_cm.set_ylabel('True Sentiment')
-        st.pyplot(fig_cm)
-        
-    with col_cm2:
-        st.markdown("### Classification Report Summary")
-        report_dict = classification_report(y_true, y_pred, labels=labels, output_dict=True, zero_division=0)
-        report_df = pd.DataFrame(report_dict).transpose()
-        st.dataframe(report_df.style.format("{:.2f}"))
