@@ -6,10 +6,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import kagglehub
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
 from groq import Groq, RateLimitError
 from transformers import pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report
+
+# Ensure NLTK resources are available
+try:
+    nltk.download('stopwords', quiet=True)
+    nltk.download('wordnet', quiet=True)
+    nltk.download('punkt', quiet=True)
+except Exception:
+    pass
 
 # Page Configuration
 st.set_page_config(
@@ -18,7 +29,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom Styling Injection
+# Custom Styling
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -41,6 +52,7 @@ st.markdown("""
 # App Title & Header
 st.title("📈 Financial Sentiment Analysis Using LLMs")
 st.markdown("A comprehensive evaluation pipeline comparing Groq LLMs (Zero-Shot & Few-Shot) against Fine-Tuned FinBERT on financial benchmark data.")
+st.markdown("---")
 
 # Initialize FinBERT Pipeline (Cached)
 @st.cache_resource
@@ -49,9 +61,10 @@ def load_finbert():
 
 finbert_pipeline = load_finbert()
 
-# Load and Prepare Dataset (Cached to prevent reloading on every interaction)
+# Load and Train/Split function provided
 @st.cache_data
-def load_and_split_data():
+def load_and_train_models():
+    # 1. Download & Load Dataset
     path = kagglehub.dataset_download("ankurzing/sentiment-analysis-for-financial-news")
     csv_path = os.path.join(path, "all-data.csv")
     
@@ -59,27 +72,40 @@ def load_and_split_data():
     df = df.drop_duplicates().reset_index(drop=True)
     df['Sentiment'] = df['Sentiment'].str.strip().str.lower()
     
-    # Stratified Train/Test Split
-    train_df, test_df = train_test_split(
-        df,
-        test_size=0.20,
+    # 2. Text Preprocessing
+    lemmatizer = WordNetLemmatizer()
+    stop_words = set(stopwords.words('english')) - {
+        'not', 'no', 'nor', 'up', 'down', 'above', 'below', 'under', 'over', 'more', 'less'
+    }
+    
+    def preprocess_text(text):
+        # Basic tokenization fallback if punkt missing
+        words = str(text).lower().split()
+        tokens = [lemmatizer.lemmatize(w) for w in words if w not in stop_words]
+        return ' '.join(tokens)
+    
+    df['Cleaned_Headline'] = df['News Headline'].apply(preprocess_text)
+    
+    # 3. Train-Test Split
+    X_train, X_test, y_train, y_test = train_test_split(
+        df['Cleaned_Headline'],
+        df['Sentiment'],
+        test_size=0.2,
         random_state=42,
         stratify=df['Sentiment']
     )
-    return df, train_df, test_df
+    return df, X_train, X_test, y_train, y_test
 
 try:
-    df, train_df, test_df = load_and_split_data()
+    df, X_train, X_test, y_train, y_test = load_and_train_models()
     total_records = df.shape[0]
-    train_shape = train_df.shape[0]
-    test_shape = test_df.shape[0]
+    train_shape = X_train.shape
+    test_shape = X_test.shape
 except Exception as e:
-    # Fallback default values if offline/kaggle cache fails
     total_records = 4840
-    train_shape = (3872, 2)
-    test_shape = (968, 2)
-    df = pd.DataFrame(columns=["Sentiment", "News Headline"])
-    test_df = pd.DataFrame(columns=["Sentiment", "News Headline"])
+    train_shape = (3872,)
+    test_shape = (968,)
+    df = pd.DataFrame(columns=["Sentiment", "News Headline", "Cleaned_Headline"])
 
 # Helper function for Groq API calls with retry mechanism
 def safe_chat_completion(client, messages, model, temperature=0.0, max_retries=3):
@@ -110,7 +136,7 @@ st.sidebar.info(
     "(Groq LLMs vs. Fine-Tuned FinBERT) using the Financial PhraseBank benchmark dataset."
 )
 
-# Main Navigation Tabs requested
+# Main Navigation Tabs
 tab1, tab2, tab3 = st.tabs([
     "📈 EDA & Overview", 
     "🏆 Model Performance", 
