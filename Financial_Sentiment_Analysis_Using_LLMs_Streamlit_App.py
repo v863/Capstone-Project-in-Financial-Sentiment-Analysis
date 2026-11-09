@@ -21,7 +21,6 @@ st.set_page_config(
 # App Title & Header
 st.title("📈 Financial Sentiment Analysis Using LLMs")
 st.markdown("A comprehensive evaluation pipeline comparing Groq LLMs (Zero-Shot & Few-Shot) against Fine-Tuned FinBERT on financial benchmark data.")
-st.markdown("---")
 
 # Initialize FinBERT Pipeline (Cached)
 @st.cache_resource
@@ -88,7 +87,7 @@ groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password", valu
 st.sidebar.markdown("---")
 st.sidebar.info(
     "This application evaluates financial text sentiment across multi-model configurations "
-    "(Groq LLMs vs. Fine-Tuned FinBERT) using the Financial PhraseBank benchmark dataset[cite: 1]."
+    "(Groq LLMs vs. Fine-Tuned FinBERT) using the Financial PhraseBank benchmark dataset."
 )
 
 # Main Navigation Tabs requested
