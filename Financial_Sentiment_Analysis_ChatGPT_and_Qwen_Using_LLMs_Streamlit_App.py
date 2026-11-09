@@ -191,9 +191,9 @@ with tab2:
     with col_stat1:
         st.metric(label="Total Records Loaded", value=f"{total_records:,}")
     with col_stat2:
-        st.metric(label="Train Split Shapes", value=f"{train_shape:,}")
+        st.metric(label="Train Split Shapes", value=f"{train_shape}")
     with col_stat3:
-        st.metric(label="Test Split Shapes", value=f"{test_shape:,}")
+        st.metric(label="Test Split Shapes", value=f"{test_shape}")
         
     st.markdown("---")
     
