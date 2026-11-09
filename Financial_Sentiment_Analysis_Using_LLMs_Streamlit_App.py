@@ -172,8 +172,7 @@ with tab1:
         
     st.dataframe(display_df.head(100), use_container_width=True)
     
-    
-    st.markdown("**Sentiment Class Distribution:**")
+    st.markdown("### Sentiment Class Distribution")
     fig, ax = plt.subplots(figsize=(6, 4))
     sns.countplot(data=df, x='Sentiment', palette='viridis', order=['neutral', 'positive', 'negative'], ax=ax)
     ax.set_title('Sentiment Distribution in Financial News')
