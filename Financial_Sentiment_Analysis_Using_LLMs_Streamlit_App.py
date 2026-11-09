@@ -162,7 +162,7 @@ with tab1:
     st.markdown("---")
     
     display_df = df if not df.empty else pd.DataFrame({
-        "Sentiment": ["neutral", "negative", "positive"],
+        "Sentiment": ["neutral", "positive", "negative"],
         "News Headline": ["Sample 1", "Sample 2", "Sample 3"]
     })
     
@@ -172,10 +172,13 @@ with tab1:
         
     st.dataframe(display_df.head(100), use_container_width=True)
     
-    st.markdown("### Class Distribution Chart")
-    fig, ax = plt.subplots(figsize=(6, 3))
-    sns.countplot(data=df, x="Sentiment", palette=["#2b5c8f", "#2ca02c", "#d9534f"], ax=ax)
-    ax.set(xlabel="Sentiment Category", ylabel="Sample Count")
+    
+    st.markdown("**Sentiment Class Distribution:**")
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.countplot(data=df, x='Sentiment', palette='viridis', order=['neutral', 'positive', 'negative'], ax=ax)
+    ax.set_title('Sentiment Distribution in Financial News')
+    ax.set_xlabel('Sentiment')
+    ax.set_ylabel('Count')
     st.pyplot(fig)
 
 # ==========================================
