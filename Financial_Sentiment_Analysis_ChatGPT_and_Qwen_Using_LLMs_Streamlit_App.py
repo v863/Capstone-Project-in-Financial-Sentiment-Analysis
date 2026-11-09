@@ -152,6 +152,18 @@ with tab2:
     st.header("Dataset Explorer (Financial PhraseBank)")
     st.markdown("Explore the benchmark dataset distribution and sample financial headlines.")
     
+    # Added Dataset Statistics metrics layout
+    st.markdown("### Dataset Statistics")
+    col_stat1, col_stat2, col_stat3 = st.columns(3)
+    with col_stat1:
+        st.metric(label="Total Records Loaded", value="4,840")
+    with col_stat2:
+        st.metric(label="Train/Test Split", value="80% / 20%")
+    with col_stat3:
+        st.metric(label="Sentiment Classes", value="3 (Pos, Neg, Neu)")
+        
+    st.markdown("---")
+    
     # Mocking basic exploration layout using standard dataset features
     sample_data = {
         "Sentiment": ["neutral", "neutral", "negative", "positive", "positive", "negative", "neutral"],
