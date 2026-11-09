@@ -8,3 +8,4 @@ seaborn
 kagglehub
 nltk
 google-genai
+transformers
