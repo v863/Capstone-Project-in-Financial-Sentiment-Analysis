@@ -40,7 +40,7 @@ if api_key_input:
 
 selected_model = st.sidebar.selectbox(
     "Select Gemini Model",
-    ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-lite-latest"],
+    ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash","gemini-4-argon", "gemini-flash-lite-latest"],
     index=0
 )
 
