@@ -185,7 +185,7 @@ with tab2:
     st.header("Dataset Explorer (Financial PhraseBank)")
     st.markdown("Explore the benchmark dataset distribution and sample financial headlines.")
     
-    # Dataset Statistics metrics populated programmatically (Sentiment Classes metric removed)
+    # Dataset Statistics metrics populated programmatically
     st.markdown("### Dataset Statistics")
     col_stat1, col_stat2 = st.columns(2)
     with col_stat1:
