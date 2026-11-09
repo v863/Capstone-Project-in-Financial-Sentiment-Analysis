@@ -185,15 +185,13 @@ with tab2:
     st.header("Dataset Explorer (Financial PhraseBank)")
     st.markdown("Explore the benchmark dataset distribution and sample financial headlines.")
     
-    # Dataset Statistics metrics populated programmatically
+    # Dataset Statistics metrics populated programmatically (Sentiment Classes metric removed)
     st.markdown("### Dataset Statistics")
-    col_stat1, col_stat2, col_stat3 = st.columns(3)
+    col_stat1, col_stat2 = st.columns(2)
     with col_stat1:
         st.metric(label="Total Records Loaded", value=f"{total_records:,}")
     with col_stat2:
         st.metric(label="Train / Test Split Shapes", value=f"Train: {train_shape} | Test: {test_shape}")
-    with col_stat3:
-        st.metric(label="Sentiment Classes", value="3 (Pos, Neg, Neu)")
         
     st.markdown("---")
     
@@ -221,29 +219,4 @@ with tab3:
     st.header("Comparative Performance Benchmarks")
     st.markdown("Review macro-evaluation metrics across all tested model variants and prompting configurations[cite: 1].")
     
-    benchmark_data = [
-        {"Model": "openai/gpt-oss-120b", "Configuration": "Zero-shot", "Accuracy": 0.75, "Precision": 0.79, "Recall": 0.75, "F1-score": 0.75},
-        {"Model": "openai/gpt-oss-120b", "Configuration": "Few-shot", "Accuracy": 0.80, "Precision": 0.84, "Recall": 0.80, "F1-score": 0.80},
-        {"Model": "qwen/qwen3.8-27b", "Configuration": "Zero-shot", "Accuracy": 0.82, "Precision": 0.85, "Recall": 0.82, "F1-score": 0.83},
-        {"Model": "qwen/qwen3.8-27b", "Configuration": "Few-shot", "Accuracy": 0.82, "Precision": 0.87, "Recall": 0.82, "F1-score": 0.83},
-        {"Model": "openai/gpt-oss-20b", "Configuration": "Zero-shot", "Accuracy": 0.78, "Precision": 0.78, "Recall": 0.78, "F1-score": 0.77},
-        {"Model": "openai/gpt-oss-20b", "Configuration": "Few-shot", "Accuracy": 0.80, "Precision": 0.84, "Recall": 0.80, "F1-score": 0.80},
-        {"Model": "ProsusAI/finbert", "Configuration": "Fine-Tuned", "Accuracy": 0.85, "Precision": 0.88, "Recall": 0.85, "F1-score": 0.85},
-    ]
-    
-    benchmark_df = pd.DataFrame(benchmark_data)
-    st.dataframe(benchmark_df, use_container_width=True)
-    
-    st.markdown("### F1-Score Comparison Bar Chart")
-    fig2, ax2 = plt.subplots(figsize=(10, 4))
-    sns.barplot(
-        data=benchmark_df, 
-        x="Model", 
-        y="F1-score", 
-        hue="Configuration", 
-        palette="viridis", 
-        ax=ax2
-    )
-    plt.xticks(rotation=20)
-    ax2.set(ylim=(0.6, 1.0), title="F1-Score Comparison Across Models & Configurations")
-    st.pyplot(fig2)
+    benchmark_data =
