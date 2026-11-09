@@ -99,8 +99,8 @@ def load_and_train_models():
 try:
     df, X_train, X_test, y_train, y_test = load_and_train_models()
     total_records = df.shape[0]
-    train_shape = X_train.shape
-    test_shape = X_test.shape
+    train_shape = X_train.shape[0]
+    test_shape = X_test.shape[0]
 except Exception as e:
     total_records = 4840
     train_shape = (3872,)
