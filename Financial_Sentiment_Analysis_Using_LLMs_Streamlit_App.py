@@ -18,6 +18,26 @@ st.set_page_config(
     layout="wide"
 )
 
+# Custom Styling Injection
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #e2ebfa;
+        border-radius: 5px 5px 0px 0px;
+        font-weight: 600;
+        color: #174EA6;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #2b5c8f !important;
+        color: white !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # App Title & Header
 st.title("📈 Financial Sentiment Analysis Using LLMs")
 st.markdown("A comprehensive evaluation pipeline comparing Groq LLMs (Zero-Shot & Few-Shot) against Fine-Tuned FinBERT on financial benchmark data.")
