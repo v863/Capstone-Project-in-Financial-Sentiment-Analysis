@@ -187,11 +187,13 @@ with tab2:
     
     # Dataset Statistics metrics populated programmatically
     st.markdown("### Dataset Statistics")
-    col_stat1, col_stat2 = st.columns(2)
+    col_stat1, col_stat2, col_stat3 = st.columns(3)
     with col_stat1:
         st.metric(label="Total Records Loaded", value=f"{total_records:,}")
     with col_stat2:
-        st.metric(label="Train / Test Split Shapes", value=f"Train: {train_shape} | Test: {test_shape}")
+        st.metric(label="Train Split Shapes", value=f"Train: {train_shape}")
+    with col_stat3:
+        st.metric(label="Test Split Shapes", value=f"Test: {test_shape}")
         
     st.markdown("---")
     
