@@ -276,7 +276,7 @@ with tab2:
     st.dataframe(results_df.style.highlight_max(subset=['Accuracy', 'Macro F1-Score'], color='#dcfce7'), use_container_width=True)
     
     st.markdown("### Performance Comparison Bar Chart")
-    fig, ax = st.subplots(figsize=(9, 4.5))
+    fig, ax = plt.subplots(figsize=(9, 4.5))
     x = np.arange(len(results_df['Model']))
     width = 0.35
     
