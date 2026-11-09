@@ -162,8 +162,8 @@ with tab1:
     st.markdown("---")
     
     display_df = df if not df.empty else pd.DataFrame({
-        "Sentiment": ["neutral", "neutral", "negative", "positive"],
-        "News Headline": ["Sample 1", "Sample 2", "Sample 3", "Sample 4"]
+        "Sentiment": ["neutral", "negative", "positive"],
+        "News Headline": ["Sample 1", "Sample 2", "Sample 3"]
     })
     
     filter_sentiment = st.selectbox("Filter by Sentiment Label", ["All", "positive", "negative", "neutral"])
