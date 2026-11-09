@@ -83,7 +83,7 @@ groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password", valu
 st.sidebar.markdown("---")
 st.sidebar.info(
     "This application evaluates financial text sentiment across multi-model configurations "
-    "(Groq LLMs vs. Fine-Tuned FinBERT) using the Financial PhraseBank benchmark dataset[cite: 1]."
+    "(Groq LLMs vs. Fine-Tuned FinBERT) using the Financial PhraseBank benchmark dataset."
 )
 
 # Navigation Tabs (Now including Tab 4)
@@ -221,7 +221,7 @@ with tab2:
 # ==========================================
 with tab3:
     st.header("Comparative Performance Benchmarks")
-    st.markdown("Review macro-evaluation metrics across all tested model variants and prompting configurations[cite: 1].")
+    st.markdown("Review macro-evaluation metrics across all tested model variants and prompting configurations.")
     
     benchmark_data = [
         {"Model": "openai/gpt-oss-120b", "Configuration": "Zero-shot", "Accuracy": 0.75, "Precision": 0.79, "Recall": 0.75, "F1-score": 0.75},
