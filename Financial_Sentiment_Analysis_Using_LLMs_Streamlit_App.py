@@ -13,7 +13,7 @@ from sklearn.metrics import confusion_matrix, classification_report
 
 # Page Configuration
 st.set_page_config(
-    page_title="Financial Sentiment Multi-Model Dashboard",
+    page_title="Financial Sentiment Analysis Using LLMs Dashboard",
     page_icon="📈",
     layout="wide"
 )
