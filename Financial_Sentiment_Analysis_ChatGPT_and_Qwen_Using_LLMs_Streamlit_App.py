@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import torch
 from groq import Groq, RateLimitError
 from transformers import pipeline
 
