@@ -10,6 +10,8 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from groq import Groq, RateLimitError
+from google import genai
+from google.genai import types
 from transformers import pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, f1_score
@@ -51,7 +53,7 @@ st.markdown("""
 
 # App Title & Header
 st.title("📈 Financial Sentiment Analysis Using LLMs")
-st.markdown("A dynamic evaluation pipeline comparing Groq LLMs (Zero-Shot & Few-Shot) against Fine-Tuned FinBERT on financial benchmark data.")
+st.markdown("A dynamic evaluation pipeline comparing Groq LLMs and Gemini (Gemini-3.5-Flash-Lite) against Fine-Tuned FinBERT on financial benchmark data.")
 st.markdown("---")
 
 # Initialize FinBERT Pipeline (Cached)
@@ -126,11 +128,12 @@ def safe_chat_completion(client, messages, model, temperature=0.0, max_retries=3
 # Sidebar Configuration
 st.sidebar.title("🛠️ Global Configuration")
 groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password", value=os.environ.get("GROQ_API_KEY", ""))
+gemini_api_key = st.sidebar.text_input("Enter Gemini API Key", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
 
 st.sidebar.markdown("---")
 st.sidebar.info(
     "This application evaluates financial text sentiment across multi-model configurations "
-    "(Groq LLMs vs. Fine-Tuned FinBERT) using the Financial PhraseBank benchmark dataset."
+    "(Groq LLMs, Gemini-3.5-Flash-Lite, vs. FinBERT) using the Financial PhraseBank benchmark dataset."
 )
 
 # Main Navigation Tabs
@@ -183,7 +186,7 @@ with tab1:
 # ==========================================
 with tab2:
     st.subheader("Dynamic Model Evaluation & Comparison")
-    st.markdown("Run live evaluation on test samples using **FinBERT** and **Groq Models** to dynamically calculate `accuracy_score`, `macro f1_score`, and `weighted f1_score`.")
+    st.markdown("Run live evaluation on test samples using **FinBERT**, **Groq Models**, and **Gemini-3.5-Flash-Lite** to dynamically calculate `accuracy_score`, `macro f1_score`, and `weighted f1_score`.")
     
     col_eval_cfg1, col_eval_cfg2 = st.columns(2)
     with col_eval_cfg1:
@@ -191,6 +194,7 @@ with tab2:
             "Select Model for Dynamic Evaluation",
             [
                 "ProsusAI/finbert (Fine-Tuned Local)",
+                "gemini-3.5-flash-lite",
                 "openai/gpt-oss-120b",
                 "qwen/qwen2.5-32b",
                 "openai/gpt-oss-20b"
@@ -203,8 +207,13 @@ with tab2:
     sample_size = st.slider("Select Number of Test Samples to Evaluate (for speed & API limits)", min_value=10, max_value=200, value=30, step=10)
 
     if st.button("🚀 Run Dynamic Evaluation", type="primary"):
-        if "finbert" not in eval_model.lower() and not groq_api_key:
-            st.error("⚠️ Please provide a valid Groq API Key in the sidebar for Groq models.")
+        is_gemini = "gemini" in eval_model.lower()
+        is_groq = eval_model in ["openai/gpt-oss-120b", "qwen/qwen2.5-32b", "openai/gpt-oss-20b"]
+        
+        if is_gemini and not gemini_api_key:
+            st.error("⚠️ Please provide a valid Gemini API Key in the sidebar.")
+        elif is_groq and not groq_api_key:
+            st.error("⚠️ Please provide a valid Groq API Key in the sidebar.")
         else:
             with st.spinner(f"Evaluating {eval_model} ({eval_paradigm}) on {sample_size} test samples..."):
                 test_subset = X_test.head(sample_size).reset_index(drop=True)
@@ -218,6 +227,40 @@ with tab2:
                         try:
                             res = finbert_pipeline(text[:512])[0]
                             predictions.append(res['label'].strip().lower())
+                        except Exception:
+                            predictions.append("neutral")
+                elif is_gemini:
+                    client_gemini = genai.Client(api_key=gemini_api_key)
+                    system_instruction = (
+                        "The goal is to classify financial texts (e.g., news articles, analyst reports, or company announcements) "
+                        "into three categories: positive, negative, or neutral sentiment. Return ONLY the exact category name (positive, negative, or neutral)."
+                    )
+                    for text in test_subset:
+                        try:
+                            if eval_paradigm == "Zero-Shot":
+                                prompt = f"Classify the sentiment of this text into positive, negative, or neutral:\n\n\"{text}\""
+                            else:
+                                prompt = (
+                                    'Here are some example demonstrations for sentiment classification:\n'
+                                    'S1: "The company has no plans to expand production." -> neutral\n'
+                                    'S2: "The international electronic industry company posted a net loss." -> negative\n'
+                                    'S3: "With the new production plant the company will increase revenue." -> positive\n\n'
+                                    f'Classify the sentiment of this text: \"{text}\"'
+                                )
+                            response = client_gemini.models.generate_content(
+                                model=eval_model,
+                                contents=prompt,
+                                config=types.GenerateContentConfig(
+                                    system_instruction=system_instruction,
+                                    temperature=0.0
+                                )
+                            )
+                            pred = response.text.strip().lower()
+                            if pred not in ['positive', 'negative', 'neutral']:
+                                if 'pos' in pred: pred = 'positive'
+                                elif 'neg' in pred: pred = 'negative'
+                                else: pred = 'neutral'
+                            predictions.append(pred)
                         except Exception:
                             predictions.append("neutral")
                 else:
@@ -252,7 +295,6 @@ with tab2:
                             
                 elapsed_time = time.time() - start_time
                 
-                # Compute Metrics dynamically using sklearn
                 acc = accuracy_score(true_subset, predictions)
                 macro_f1 = f1_score(true_subset, predictions, average='macro', zero_division=0)
                 weighted_f1 = f1_score(true_subset, predictions, average='weighted', zero_division=0)
@@ -295,6 +337,7 @@ with tab3:
         model_choice = st.selectbox(
             "Choose Model / Architecture",
             [
+                "gemini-3.5-flash-lite",
                 "openai/gpt-oss-120b",
                 "qwen/qwen2.5-32b",
                 "openai/gpt-oss-20b",
@@ -327,6 +370,49 @@ with tab3:
                     c1, c2 = st.columns(2)
                     c1.metric("Predicted Sentiment", pred_label.upper())
                     c2.metric("Confidence Score", f"{confidence:.4f}")
+                elif "gemini" in model_choice.lower():
+                    if not gemini_api_key:
+                        st.error("⚠️ Please provide a valid Gemini API Key in the sidebar.")
+                    else:
+                        try:
+                            client_gemini = genai.Client(api_key=gemini_api_key)
+                            system_instruction = (
+                                "The goal is to classify financial texts (e.g., news articles, analyst reports, or company announcements) "
+                                "into three categories: positive, negative, or neutral sentiment."
+                            )
+                            if prompt_paradigm == "Zero-Shot":
+                                prompt = f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:
+
+"{user_input}""
+                            else:
+                                prompt = (
+                                    'Here are some example demonstrations for sentiment classification:
+'
+                                    'S1: "The company has no plans to expand production." -> neutral
+'
+                                    'S2: "The international electronic industry company posted a net loss." -> negative
+'
+                                    'S3: "With the new production plant the company will increase revenue." -> positive
+
+'
+                                    f'Classify the sentiment of this text (return only positive, negative, or neutral): "{user_input}"'
+                                )
+                            start_time = time.time()
+                            response = client_gemini.models.generate_content(
+                                model=model_choice,
+                                contents=prompt,
+                                config=types.GenerateContentConfig(
+                                    system_instruction=system_instruction,
+                                    temperature=0.0
+                                )
+                            )
+                            elapsed = time.time() - start_time
+                            pred_label = response.text.strip().lower()
+                            
+                            st.success(f"Completed in {elapsed:.2f}s using {model_choice} ({prompt_paradigm})")
+                            st.metric("Predicted Sentiment", pred_label.upper())
+                        except Exception as e:
+                            st.error(f"Gemini API Execution Error: {e}")
                 else:
                     if not groq_api_key:
                         st.error("⚠️ Please provide a valid Groq API Key in the sidebar.")
@@ -343,20 +429,25 @@ with tab3:
                                     {"role": "system", "content": system_prompt},
                                     {
                                         "role": "user",
-                                        "content": f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:\n\n\"{user_input}\""
+                                        "content": f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:
+
+"{user_input}""
                                     }
                                 ]
                             else:
                                 few_shot_examples_text = (
-                                    'S1: "The company has no plans to expand production." -> neutral\n'
-                                    'S2: "The international electronic industry company posted a net loss." -> negative\n'
+                                    'S1: "The company has no plans to expand production." -> neutral
+'
+                                    'S2: "The international electronic industry company posted a net loss." -> negative
+'
                                     'S3: "With the new production plant the company will increase revenue." -> positive'
                                 )
                                 messages = [
                                     {"role": "system", "content": "Here are some example demonstrations for sentiment classification. " + system_prompt},
-                                    {"role": "user", "content": "Here are training examples:\n" + few_shot_examples_text},
+                                    {"role": "user", "content": "Here are training examples:
+" + few_shot_examples_text},
                                     {"role": "assistant", "content": "Understood. I will classify subsequent texts into positive, negative, or neutral."},
-                                    {"role": "user", "content": f"Classify the sentiment of this text (return only positive, negative, or neutral): \"{user_input}\""}
+                                    {"role": "user", "content": f"Classify the sentiment of this text (return only positive, negative, or neutral): "{user_input}""}
                                 ]
                             
                             start_time = time.time()
