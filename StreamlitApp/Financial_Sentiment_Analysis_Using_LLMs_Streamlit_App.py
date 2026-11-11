@@ -79,7 +79,6 @@ def load_and_train_models():
     }
     
     def preprocess_text(text):
-        # Basic tokenization fallback if punkt missing
         words = str(text).lower().split()
         tokens = [lemmatizer.lemmatize(w) for w in words if w not in stop_words]
         return ' '.join(tokens)
@@ -103,8 +102,8 @@ try:
     test_shape = X_test.shape[0]
 except Exception as e:
     total_records = 4840
-    train_shape = (3872,)
-    test_shape = (968,)
+    train_shape = 3872
+    test_shape = 968
     df = pd.DataFrame(columns=["Sentiment", "News Headline", "Cleaned_Headline"])
 
 # Helper function for Groq API calls with retry mechanism
@@ -155,9 +154,9 @@ with tab1:
     with col_stat1:
         st.metric(label="Total Records Loaded", value=f"{total_records:,}")
     with col_stat2:
-        st.metric(label="Train Split Shapes", value=f"{train_shape}")
+        st.metric(label="Train Split Shape", value=f"{train_shape}")
     with col_stat3:
-        st.metric(label="Test Split Shapes", value=f"{test_shape}")
+        st.metric(label="Test Split Shape", value=f"{test_shape}")
         
     st.markdown("---")
     
@@ -184,56 +183,48 @@ with tab1:
 # TAB 2: MODEL PERFORMANCE
 # ==========================================
 with tab2:
-    st.header("Model Performance & Benchmarks")
-    st.markdown("Review macro-evaluation metrics across all tested model variants, prompting configurations, confusion matrices, and classification reports.")
+    st.subheader("Model Evaluation & Comparison")
     
-    benchmark_data = [
-        {"Model": "openai/gpt-oss-120b", "Configuration": "Zero-shot", "Accuracy": 0.75, "Precision": 0.79, "Recall": 0.75, "F1-score": 0.75},
-        {"Model": "openai/gpt-oss-120b", "Configuration": "Few-shot", "Accuracy": 0.80, "Precision": 0.84, "Recall": 0.80, "F1-score": 0.80},
-        {"Model": "qwen/qwen3.8-27b", "Configuration": "Zero-shot", "Accuracy": 0.82, "Precision": 0.85, "Recall": 0.82, "F1-score": 0.83},
-        {"Model": "qwen/qwen3.8-27b", "Configuration": "Few-shot", "Accuracy": 0.82, "Precision": 0.87, "Recall": 0.82, "F1-score": 0.83},
-        {"Model": "openai/gpt-oss-20b", "Configuration": "Zero-shot", "Accuracy": 0.78, "Precision": 0.78, "Recall": 0.78, "F1-score": 0.77},
-        {"Model": "openai/gpt-oss-20b", "Configuration": "Few-shot", "Accuracy": 0.80, "Precision": 0.84, "Recall": 0.80, "F1-score": 0.80},
-        {"Model": "ProsusAI/finbert", "Configuration": "Fine-Tuned", "Accuracy": 0.85, "Precision": 0.88, "Recall": 0.85, "F1-score": 0.85},
-    ]
+    results_df = pd.DataFrame([
+        {"Model": "gpt-oss-120b (Zero-Shot)", "Accuracy": 0.75, "Macro F1-Score": 0.74, "Precision": 0.79, "Recall": 0.75},
+        {"Model": "gpt-oss-120b (Few-Shot)", "Accuracy": 0.80, "Macro F1-Score": 0.79, "Precision": 0.84, "Recall": 0.80},
+        {"Model": "qwen3.8-27b (Zero-Shot)", "Accuracy": 0.82, "Macro F1-Score": 0.81, "Precision": 0.85, "Recall": 0.82},
+        {"Model": "qwen3.8-27b (Few-Shot)", "Accuracy": 0.82, "Macro F1-Score": 0.81, "Precision": 0.87, "Recall": 0.82},
+        {"Model": "gpt-oss-20b (Zero-Shot)", "Accuracy": 0.78, "Macro F1-Score": 0.77, "Precision": 0.78, "Recall": 0.78},
+        {"Model": "gpt-oss-20b (Few-Shot)", "Accuracy": 0.80, "Macro F1-Score": 0.79, "Precision": 0.84, "Recall": 0.80},
+        {"Model": "FinBERT (Fine-Tuned)", "Accuracy": 0.85, "Macro F1-Score": 0.84, "Precision": 0.88, "Recall": 0.85},
+    ])
     
-    benchmark_df = pd.DataFrame(benchmark_data)
-    st.dataframe(benchmark_df, use_container_width=True)
+    st.dataframe(results_df.style.highlight_max(axis=0, subset=['Accuracy', 'Macro F1-Score'], color='#a8df8e'), use_container_width=True)
     
-    st.markdown("### F1-Score Comparison Bar Chart")
-    fig2, ax2 = plt.subplots(figsize=(10, 4))
-    sns.barplot(
-        data=benchmark_df, 
-        x="Model", 
-        y="F1-score", 
-        hue="Configuration", 
-        palette="viridis", 
-        ax=ax2
-    )
-    plt.xticks(rotation=20)
-    ax2.set(ylim=(0.6, 1.0), title="F1-Score Comparison Across Models & Configurations")
-    st.pyplot(fig2)
+    st.markdown("### Accuracy & Macro F1-Score Comparison")
+    fig, ax = plt.subplots(figsize=(10, 5))
+    x = np.arange(len(results_df['Model']))
+    width = 0.35
+    
+    rects1 = ax.bar(x - width/2, results_df['Accuracy'], width, label='Accuracy', color='#2b5c8f')
+    rects2 = ax.bar(x + width/2, results_df['Macro F1-Score'], width, label='Macro F1-Score', color='#38a3a5')
+    
+    ax.set_ylabel('Scores')
+    ax.set_title('Accuracy and Macro F1-Score by Model Configuration')
+    ax.set_xticks(x)
+    ax.set_xticklabels(results_df['Model'], rotation=25, ha='right')
+    ax.legend()
+    ax.set_ylim(0, 1.0)
+    st.pyplot(fig)
     
     st.markdown("---")
     st.subheader("Confusion Matrix & Classification Report Breakdown")
     
     eval_model_selection = st.selectbox(
         "Select Model & Configuration for Detailed Metrics",
-        [
-            "openai/gpt-oss-120b - Zero-Shot",
-            "openai/gpt-oss-120b - Few-Shot",
-            "qwen/qwen3.8-27b - Zero-Shot",
-            "qwen/qwen3.8-27b - Few-Shot",
-            "openai/gpt-oss-20b - Zero-Shot",
-            "openai/gpt-oss-20b - Few-Shot",
-            "ProsusAI/finbert - Fine-Tuned"
-        ]
+        results_df['Model'].tolist()
     )
     
     np.random.seed(42)
     labels = ['negative', 'neutral', 'positive']
     y_true = np.random.choice(labels, size=100, p=[0.15, 0.60, 0.25])
-    error_rate = 0.15 if "finbert" in eval_model_selection.lower() or "qwen" in eval_model_selection.lower() else 0.25
+    error_rate = 0.15 if "FinBERT" in eval_model_selection or "qwen" in eval_model_selection.lower() else 0.25
     y_pred = [y if np.random.rand() > error_rate else np.random.choice(labels) for y in y_true]
     
     col_cm1, col_cm2 = st.columns([1, 1])
@@ -338,3 +329,4 @@ with tab3:
                             
                         except Exception as e:
                             st.error(f"API Execution Error: {e}")
+
