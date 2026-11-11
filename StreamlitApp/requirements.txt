@@ -10,3 +10,4 @@ nltk
 google-genai
 transformers
 torch
+openai
