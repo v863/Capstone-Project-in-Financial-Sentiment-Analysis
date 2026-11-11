@@ -9,7 +9,7 @@ import kagglehub
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from openai import OpenAI
+from groq import Groq, RateLimitError
 from google import genai
 from google.genai import types
 from transformers import pipeline
@@ -26,7 +26,7 @@ except Exception:
 
 # Page Configuration
 st.set_page_config(
-    page_title="Financial Sentiment Analysis Using OpenRouter & LLMs",
+    page_title="Financial Sentiment Analysis Using LLMs",
     page_icon="📈",
     layout="wide"
 )
@@ -52,8 +52,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Title & Header
-st.title("📈 Financial Sentiment Analysis Using OpenRouter & LLMs")
-st.markdown("A dynamic evaluation pipeline comparing OpenRouter models (such as `nvidia/nemotron-3-ultra-550b-a55b:free`), Gemini (`gemini-3.5-flash-lite`), and FinBERT with real-time measured metrics.")
+st.title("📈 Financial Sentiment Analysis Using LLMs")
+st.markdown("A dynamic evaluation pipeline comparing Groq LLMs and Gemini (`gemini-3.5-flash-lite`) against Fine-Tuned FinBERT with real-time measured latency.")
 st.markdown("---")
 
 # Initialize FinBERT Pipeline (Cached)
@@ -106,32 +106,34 @@ except Exception as e:
     df = pd.DataFrame(columns=["Sentiment", "News Headline", "Cleaned_Headline"])
     X_test, y_test = pd.Series(), pd.Series()
 
-# Helper function for OpenRouter API calls with retry mechanism
-def safe_openrouter_chat_completion(client, messages, model, temperature=0.0, max_retries=3):
+# Helper function for Groq API calls with retry mechanism
+def safe_chat_completion(client, messages, model, temperature=0.0, max_retries=3):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model=model,
                 messages=messages,
+                model=model,
                 temperature=temperature
             )
             time.sleep(0.3)
             return response
-        except Exception as e:
+        except RateLimitError as e:
             if attempt == max_retries - 1:
                 raise e
             wait_time = (2 ** attempt) + 1
             time.sleep(wait_time)
+        except Exception as e:
+            raise e
 
 # Sidebar Configuration
 st.sidebar.title("🛠️ Global Configuration")
-openrouter_api_key = st.sidebar.text_input("Enter OpenRouter API Key", type="password", value=os.environ.get("OPENROUTER_API_KEY", ""))
+groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password", value=os.environ.get("GROQ_API_KEY", ""))
 gemini_api_key = st.sidebar.text_input("Enter Gemini API Key", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
 
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "This application evaluates financial text sentiment dynamically across OpenRouter LLMs "
-    "(e.g., nvidia/nemotron-3-ultra-550b-a55b:free), Gemini, and FinBERT using the Financial PhraseBank dataset."
+    "This application evaluates financial text sentiment dynamically across multi-model configurations "
+    "(Groq LLMs, Gemini-3.5-Flash-Lite, vs. FinBERT) using the Financial PhraseBank benchmark dataset."
 )
 
 # Main Navigation Tabs
@@ -184,16 +186,18 @@ with tab1:
 # ==========================================
 with tab2:
     st.subheader("Dynamic Model Evaluation & Comparison")
-    st.markdown("Run live evaluation on test samples using **FinBERT**, **OpenRouter Models**, and **Gemini** to dynamically calculate `accuracy_score`, `macro f1_score`, `weighted f1_score`, and latency.")
+    st.markdown("Run live evaluation on test samples using **FinBERT**, **Groq Models**, and **Gemini-3.5-Flash-Lite** to dynamically calculate accuracy, F1 scores, and real-time inference latency.")
     
     col_eval_cfg1, col_eval_cfg2 = st.columns(2)
     with col_eval_cfg1:
         eval_model = st.selectbox(
             "Select Model for Dynamic Evaluation",
             [
-                "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "ProsusAI/finbert (Fine-Tuned Local)",
                 "gemini-3.5-flash-lite",
-                "ProsusAI/finbert (Fine-Tuned Local)"
+                "openai/gpt-oss-120b",
+                "qwen/qwen2.5-32b",
+                "openai/gpt-oss-20b"
             ],
             key="eval_model_select"
         )
@@ -204,19 +208,19 @@ with tab2:
 
     if st.button("🚀 Run Dynamic Evaluation", type="primary"):
         is_gemini = "gemini" in eval_model.lower()
-        is_openrouter = eval_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        is_groq = eval_model in ["openai/gpt-oss-120b", "qwen/qwen2.5-32b", "openai/gpt-oss-20b"]
         
         if is_gemini and not gemini_api_key:
             st.error("⚠️ Please provide a valid Gemini API Key in the sidebar.")
-        elif is_openrouter and not openrouter_api_key:
-            st.error("⚠️ Please provide a valid OpenRouter API Key in the sidebar.")
+        elif is_groq and not groq_api_key:
+            st.error("⚠️ Please provide a valid Groq API Key in the sidebar.")
         else:
             with st.spinner(f"Evaluating {eval_model} ({eval_paradigm}) on {sample_size} test samples..."):
                 test_subset = X_test.head(sample_size).reset_index(drop=True)
                 true_subset = y_test.head(sample_size).reset_index(drop=True)
                 
                 predictions = []
-                start_time = time.time()
+                start_time = time.time() # Start measuring total batch duration
                 
                 if "finbert" in eval_model.lower():
                     for text in test_subset:
@@ -260,10 +264,7 @@ with tab2:
                         except Exception:
                             predictions.append("neutral")
                 else:
-                    client = OpenAI(
-                        base_url="https://openrouter.ai/api/v1",
-                        api_key=openrouter_api_key
-                    )
+                    client = Groq(api_key=groq_api_key)
                     system_prompt = (
                         "The goal is to classify financial texts (e.g., news articles, analyst reports, or company announcements) "
                         "into three categories: positive, negative, or neutral sentiment. Return ONLY the exact category name."
@@ -282,7 +283,7 @@ with tab2:
                                     {"role": "assistant", "content": "Understood. I will classify subsequent texts into positive, negative, or neutral."},
                                     {"role": "user", "content": f"Classify the sentiment of this text:\n\n\"{text}\""}
                                 ]
-                            resp = safe_openrouter_chat_completion(client=client, messages=messages, model=eval_model, temperature=0.0)
+                            resp = safe_chat_completion(client=client, messages=messages, model=eval_model, temperature=0.0)
                             pred = resp.choices[0].message.content.strip().lower()
                             if pred not in ['positive', 'negative', 'neutral']:
                                 if 'pos' in pred: pred = 'positive'
@@ -340,8 +341,10 @@ with tab3:
         model_choice = st.selectbox(
             "Choose Model / Architecture",
             [
-                "nvidia/nemotron-3-ultra-550b-a55b:free",
                 "gemini-3.5-flash-lite",
+                "openai/gpt-oss-120b",
+                "qwen/qwen2.5-32b",
+                "openai/gpt-oss-20b",
                 "ProsusAI/finbert (Fine-Tuned Local)"
             ],
             key="live_model_choice"
@@ -411,14 +414,11 @@ with tab3:
                         except Exception as e:
                             st.error(f"Gemini API Execution Error: {e}")
                 else:
-                    if not openrouter_api_key:
-                        st.error("⚠️ Please provide a valid OpenRouter API Key in the sidebar.")
+                    if not groq_api_key:
+                        st.error("⚠️ Please provide a valid Groq API Key in the sidebar.")
                     else:
                         try:
-                            client = OpenAI(
-                                base_url="https://openrouter.ai/api/v1",
-                                api_key=openrouter_api_key
-                            )
+                            client = Groq(api_key=groq_api_key)
                             system_prompt = (
                                 "The goal is to classify financial texts (e.g., news articles, analyst reports, or company announcements) "
                                 "into three categories: positive, negative, or neutral sentiment."
@@ -446,7 +446,7 @@ with tab3:
                                 ]
                             
                             start_time = time.time()
-                            resp = safe_openrouter_chat_completion(client=client, messages=messages, model=model_choice, temperature=0.0)
+                            resp = safe_chat_completion(client=client, messages=messages, model=model_choice, temperature=0.0)
                             elapsed = time.time() - start_time
                             
                             pred_label = resp.choices[0].message.content.strip().lower()
@@ -457,4 +457,4 @@ with tab3:
                             c2.metric("Measured Latency", f"{elapsed:.3f}s")
                             
                         except Exception as e:
-                            st.error(f"OpenRouter API Execution Error: {e}")
+                            st.error(f"API Execution Error: {e}")
