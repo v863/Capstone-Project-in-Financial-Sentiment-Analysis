@@ -9,9 +9,8 @@ import kagglehub
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+from openai import OpenAI
 from groq import Groq, RateLimitError
-from google import genai
-from google.genai import types
 from transformers import pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, f1_score
@@ -26,7 +25,7 @@ except Exception:
 
 # Page Configuration
 st.set_page_config(
-    page_title="Financial Sentiment Analysis Using LLMs",
+    page_title="Financial Sentiment Analysis Using OpenRouter & LLMs",
     page_icon="📈",
     layout="wide"
 )
@@ -52,8 +51,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Title & Header
-st.title("📈 Financial Sentiment Analysis Using LLMs")
-st.markdown("A dynamic evaluation pipeline comparing Groq LLMs and Gemini (`gemini-3.5-flash-lite`) against Fine-Tuned FinBERT with real-time measured latency.")
+st.title("📈 Financial Sentiment Analysis Using OpenRouter & LLMs")
+st.markdown("A dynamic evaluation pipeline comparing OpenRouter models (`nvidia/nemotron-3-ultra-550b-a55b:free`), Groq LLMs, and Fine-Tuned FinBERT with real-time measured latency, Accuracy, Macro-F1, and Weighted-F1.")
 st.markdown("---")
 
 # Initialize FinBERT Pipeline (Cached)
@@ -106,34 +105,32 @@ except Exception as e:
     df = pd.DataFrame(columns=["Sentiment", "News Headline", "Cleaned_Headline"])
     X_test, y_test = pd.Series(), pd.Series()
 
-# Helper function for Groq API calls with retry mechanism
-def safe_chat_completion(client, messages, model, temperature=0.0, max_retries=3):
+# Helper function for OpenRouter API calls
+def safe_openrouter_chat_completion(client, messages, model, temperature=0.0, max_retries=3):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                messages=messages,
                 model=model,
+                messages=messages,
                 temperature=temperature
             )
             time.sleep(0.3)
             return response
-        except RateLimitError as e:
+        except Exception as e:
             if attempt == max_retries - 1:
                 raise e
             wait_time = (2 ** attempt) + 1
             time.sleep(wait_time)
-        except Exception as e:
-            raise e
 
 # Sidebar Configuration
 st.sidebar.title("🛠️ Global Configuration")
-groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password", value=os.environ.get("GROQ_API_KEY", ""))
-gemini_api_key = st.sidebar.text_input("Enter Gemini API Key", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
+openrouter_api_key = st.sidebar.text_input("Enter OpenRouter API Key", type="password", value=os.environ.get("OPENROUTER_API_KEY", ""))
+groq_api_key = st.sidebar.text_input("Enter Groq API Key (Optional)", type="password", value=os.environ.get("GROQ_API_KEY", ""))
 
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "This application evaluates financial text sentiment dynamically across multi-model configurations "
-    "(Groq LLMs, Gemini-3.5-Flash-Lite, vs. FinBERT) using the Financial PhraseBank benchmark dataset."
+    "This application evaluates financial text sentiment dynamically across OpenRouter "
+    "(nvidia/nemotron-3-ultra-550b-a55b:free), Groq LLMs, and FinBERT using the Financial PhraseBank dataset."
 )
 
 # Main Navigation Tabs
@@ -186,18 +183,19 @@ with tab1:
 # ==========================================
 with tab2:
     st.subheader("Dynamic Model Evaluation & Comparison")
-    st.markdown("Run live evaluation on test samples using **FinBERT**, **Groq Models**, and **Gemini-3.5-Flash-Lite** to dynamically calculate accuracy, F1 scores, and real-time inference latency.")
+    st.markdown("Run live evaluation on test samples using **nvidia/nemotron-3-ultra-550b-a55b:free**, **Groq Models**, and **FinBERT** to dynamically calculate `Accuracy`, `Macro F1-Score`, `Weighted F1-Score`, and measured `Latency`.")
     
     col_eval_cfg1, col_eval_cfg2 = st.columns(2)
     with col_eval_cfg1:
         eval_model = st.selectbox(
             "Select Model for Dynamic Evaluation",
             [
-                "ProsusAI/finbert (Fine-Tuned Local)",
+                "nvidia/nemotron-3-ultra-550b-a55b:free",
                 "gemini-3.5-flash-lite",
                 "openai/gpt-oss-120b",
                 "qwen/qwen2.5-32b",
-                "openai/gpt-oss-20b"
+                "openai/gpt-oss-20b",
+                "ProsusAI/finbert (Fine-Tuned Local)"
             ],
             key="eval_model_select"
         )
@@ -207,12 +205,12 @@ with tab2:
     sample_size = st.slider("Select Number of Test Samples to Evaluate", min_value=5, max_value=100, value=20, step=5)
 
     if st.button("🚀 Run Dynamic Evaluation", type="primary"):
-        is_gemini = "gemini" in eval_model.lower()
-        is_groq = eval_model in ["openai/gpt-oss-120b", "qwen/qwen2.5-32b", "openai/gpt-oss-20b"]
+        is_openrouter = "nvidia" in eval_model.lower() or "free" in eval_model.lower()
+        is_finbert = "finbert" in eval_model.lower()
         
-        if is_gemini and not gemini_api_key:
-            st.error("⚠️ Please provide a valid Gemini API Key in the sidebar.")
-        elif is_groq and not groq_api_key:
+        if is_openrouter and not openrouter_api_key:
+            st.error("⚠️ Please provide a valid OpenRouter API Key in the sidebar.")
+        elif not is_openrouter and not is_finbert and not groq_api_key:
             st.error("⚠️ Please provide a valid Groq API Key in the sidebar.")
         else:
             with st.spinner(f"Evaluating {eval_model} ({eval_paradigm}) on {sample_size} test samples..."):
@@ -220,42 +218,40 @@ with tab2:
                 true_subset = y_test.head(sample_size).reset_index(drop=True)
                 
                 predictions = []
-                start_time = time.time() # Start measuring total batch duration
+                start_time = time.time()
                 
-                if "finbert" in eval_model.lower():
+                if is_finbert:
                     for text in test_subset:
                         try:
                             res = finbert_pipeline(text[:512])[0]
                             predictions.append(res['label'].strip().lower())
                         except Exception:
                             predictions.append("neutral")
-                elif is_gemini:
-                    client_gemini = genai.Client(api_key=gemini_api_key)
-                    system_instruction = (
+                elif is_openrouter:
+                    client = OpenAI(
+                        base_url="https://openrouter.ai/api/v1",
+                        api_key=openrouter_api_key
+                    )
+                    system_prompt = (
                         "The goal is to classify financial texts (e.g., news articles, analyst reports, or company announcements) "
-                        "into three categories: positive, negative, or neutral sentiment. Return ONLY the exact category name (positive, negative, or neutral)."
+                        "into three categories: positive, negative, or neutral sentiment. Return ONLY the exact category name."
                     )
                     for text in test_subset:
                         try:
                             if eval_paradigm == "Zero-Shot":
-                                prompt = f"Classify the sentiment of this text into positive, negative, or neutral:\n\n\"{text}\""
+                                messages = [
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": f"Classify the sentiment of this text into positive, negative, or neutral:\n\n\"{text}\""}
+                                ]
                             else:
-                                prompt = (
-                                    'Here are some example demonstrations for sentiment classification:\n'
-                                    'S1: "The company has no plans to expand production." -> neutral\n'
-                                    'S2: "The international electronic industry company posted a net loss." -> negative\n'
-                                    'S3: "With the new production plant the company will increase revenue." -> positive\n\n'
-                                    f'Classify the sentiment of this text: "{text}"'
-                                )
-                            response = client_gemini.models.generate_content(
-                                model=eval_model,
-                                contents=prompt,
-                                config=types.GenerateContentConfig(
-                                    system_instruction=system_instruction,
-                                    temperature=0.0
-                                )
-                            )
-                            pred = response.text.strip().lower()
+                                messages = [
+                                    {"role": "system", "content": "Here are some example demonstrations for sentiment classification. " + system_prompt},
+                                    {"role": "user", "content": 'S1: "The company has no plans to expand production." -> neutral\nS2: "The international electronic industry company posted a net loss." -> negative\nS3: "With the new production plant the company will increase revenue." -> positive'},
+                                    {"role": "assistant", "content": "Understood. I will classify subsequent texts into positive, negative, or neutral."},
+                                    {"role": "user", "content": f"Classify the sentiment of this text:\n\n\"{text}\""}
+                                ]
+                            resp = safe_openrouter_chat_completion(client=client, messages=messages, model=eval_model, temperature=0.0)
+                            pred = resp.choices[0].message.content.strip().lower()
                             if pred not in ['positive', 'negative', 'neutral']:
                                 if 'pos' in pred: pred = 'positive'
                                 elif 'neg' in pred: pred = 'negative'
@@ -283,7 +279,7 @@ with tab2:
                                     {"role": "assistant", "content": "Understood. I will classify subsequent texts into positive, negative, or neutral."},
                                     {"role": "user", "content": f"Classify the sentiment of this text:\n\n\"{text}\""}
                                 ]
-                            resp = safe_chat_completion(client=client, messages=messages, model=eval_model, temperature=0.0)
+                            resp = client.chat.completions.create(messages=messages, model=eval_model, temperature=0.0)
                             pred = resp.choices[0].message.content.strip().lower()
                             if pred not in ['positive', 'negative', 'neutral']:
                                 if 'pos' in pred: pred = 'positive'
@@ -310,7 +306,7 @@ with tab2:
                 
                 st.markdown("### Dynamic Results DataFrame")
                 dynamic_res_df = pd.DataFrame([{
-                    "Model": f"{eval_model} ({eval_paradigm})" if "finbert" not in eval_model.lower() else "FinBERT (Fine-Tuned)",
+                    "Model": f"{eval_model} ({eval_paradigm})" if not is_finbert else "FinBERT (Fine-Tuned)",
                     "Samples Evaluated": sample_size,
                     "Accuracy": acc,
                     "Macro F1-Score": macro_f1,
@@ -341,6 +337,7 @@ with tab3:
         model_choice = st.selectbox(
             "Choose Model / Architecture",
             [
+                "nvidia/nemotron-3-ultra-550b-a55b:free",
                 "gemini-3.5-flash-lite",
                 "openai/gpt-oss-120b",
                 "qwen/qwen2.5-32b",
@@ -362,7 +359,10 @@ with tab3:
             st.warning("Please enter some text to analyze.")
         else:
             with st.spinner("Processing prediction..."):
-                if "finbert" in model_choice.lower():
+                is_finbert = "finbert" in model_choice.lower()
+                is_openrouter = "nvidia" in model_choice.lower() or "free" in model_choice.lower()
+                
+                if is_finbert:
                     start_time = time.time()
                     res = finbert_pipeline(user_input[:512])[0]
                     elapsed = time.time() - start_time
@@ -375,44 +375,42 @@ with tab3:
                     c1.metric("Predicted Sentiment", pred_label.upper())
                     c2.metric("Confidence Score", f"{confidence:.4f}")
                     c3.metric("Measured Latency", f"{elapsed:.3f}s")
-                elif "gemini" in model_choice.lower():
-                    if not gemini_api_key:
-                        st.error("⚠️ Please provide a valid Gemini API Key in the sidebar.")
+                elif is_openrouter:
+                    if not openrouter_api_key:
+                        st.error("⚠️ Please provide a valid OpenRouter API Key in the sidebar.")
                     else:
                         try:
-                            client_gemini = genai.Client(api_key=gemini_api_key)
-                            system_instruction = (
+                            client = OpenAI(
+                                base_url="https://openrouter.ai/api/v1",
+                                api_key=openrouter_api_key
+                            )
+                            system_prompt = (
                                 "The goal is to classify financial texts (e.g., news articles, analyst reports, or company announcements) "
                                 "into three categories: positive, negative, or neutral sentiment."
                             )
                             if prompt_paradigm == "Zero-Shot":
-                                prompt = f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:\n\n\"{user_input}\""
+                                messages = [
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:\n\n\"{user_input}\""}
+                                ]
                             else:
-                                prompt = (
-                                    'Here are some example demonstrations for sentiment classification:\n'
-                                    'S1: "The company has no plans to expand production." -> neutral\n'
-                                    'S2: "The international electronic industry company posted a net loss." -> negative\n'
-                                    'S3: "With the new production plant the company will increase revenue." -> positive\n\n'
-                                    f'Classify the sentiment of this text (return only positive, negative, or neutral): "{user_input}"'
-                                )
+                                messages = [
+                                    {"role": "system", "content": "Here are some example demonstrations for sentiment classification. " + system_prompt},
+                                    {"role": "user", "content": 'S1: "The company has no plans to expand production." -> neutral\nS2: "The international electronic industry company posted a net loss." -> negative\nS3: "With the new production plant the company will increase revenue." -> positive'},
+                                    {"role": "assistant", "content": "Understood. I will classify subsequent texts into positive, negative, or neutral."},
+                                    {"role": "user", "content": f"Classify the sentiment of this text (return only positive, negative, or neutral): \"{user_input}\""}
+                                ]
                             start_time = time.time()
-                            response = client_gemini.models.generate_content(
-                                model=model_choice,
-                                contents=prompt,
-                                config=types.GenerateContentConfig(
-                                    system_instruction=system_instruction,
-                                    temperature=0.0
-                                )
-                            )
+                            resp = safe_openrouter_chat_completion(client=client, messages=messages, model=model_choice, temperature=0.0)
                             elapsed = time.time() - start_time
-                            pred_label = response.text.strip().lower()
+                            pred_label = resp.choices[0].message.content.strip().lower()
                             
                             st.success(f"Completed in {elapsed:.3f}s using {model_choice} ({prompt_paradigm})")
                             c1, c2 = st.columns(2)
                             c1.metric("Predicted Sentiment", pred_label.upper())
                             c2.metric("Measured Latency", f"{elapsed:.3f}s")
                         except Exception as e:
-                            st.error(f"Gemini API Execution Error: {e}")
+                            st.error(f"OpenRouter API Execution Error: {e}")
                 else:
                     if not groq_api_key:
                         st.error("⚠️ Please provide a valid Groq API Key in the sidebar.")
@@ -423,38 +421,26 @@ with tab3:
                                 "The goal is to classify financial texts (e.g., news articles, analyst reports, or company announcements) "
                                 "into three categories: positive, negative, or neutral sentiment."
                             )
-                            
                             if prompt_paradigm == "Zero-Shot":
                                 messages = [
                                     {"role": "system", "content": system_prompt},
-                                    {
-                                        "role": "user",
-                                        "content": f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:\n\n\"{user_input}\""
-                                    }
+                                    {"role": "user", "content": f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:\n\n\"{user_input}\""}
                                 ]
                             else:
-                                few_shot_examples_text = (
-                                    'S1: "The company has no plans to expand production." -> neutral\n'
-                                    'S2: "The international electronic industry company posted a net loss." -> negative\n'
-                                    'S3: "With the new production plant the company will increase revenue." -> positive'
-                                )
                                 messages = [
                                     {"role": "system", "content": "Here are some example demonstrations for sentiment classification. " + system_prompt},
-                                    {"role": "user", "content": "Here are training examples:\n" + few_shot_examples_text},
+                                    {"role": "user", "content": 'S1: "The company has no plans to expand production." -> neutral\nS2: "The international electronic industry company posted a net loss." -> negative\nS3: "With the new production plant the company will increase revenue." -> positive'},
                                     {"role": "assistant", "content": "Understood. I will classify subsequent texts into positive, negative, or neutral."},
                                     {"role": "user", "content": f"Classify the sentiment of this text (return only positive, negative, or neutral): \"{user_input}\""}
                                 ]
-                            
                             start_time = time.time()
-                            resp = safe_chat_completion(client=client, messages=messages, model=model_choice, temperature=0.0)
+                            resp = client.chat.completions.create(messages=messages, model=model_choice, temperature=0.0)
                             elapsed = time.time() - start_time
-                            
                             pred_label = resp.choices[0].message.content.strip().lower()
                             
                             st.success(f"Completed in {elapsed:.3f}s using {model_choice} ({prompt_paradigm})")
                             c1, c2 = st.columns(2)
                             c1.metric("Predicted Sentiment", pred_label.upper())
                             c2.metric("Measured Latency", f"{elapsed:.3f}s")
-                            
                         except Exception as e:
-                            st.error(f"API Execution Error: {e}")
+                            st.error(f"Groq API Execution Error: {e}")
