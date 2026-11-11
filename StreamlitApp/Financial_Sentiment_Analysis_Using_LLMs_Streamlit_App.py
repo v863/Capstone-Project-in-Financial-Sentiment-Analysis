@@ -12,7 +12,7 @@ from nltk.stem import WordNetLemmatizer
 from groq import Groq, RateLimitError
 from transformers import pipeline
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, f1_score
 
 # Ensure NLTK resources are available
 try:
@@ -183,7 +183,7 @@ with tab1:
 # ==========================================
 with tab2:
     st.subheader("Dynamic Model Evaluation & Comparison")
-    st.markdown("Run live evaluation on test samples using **FinBERT** and **Groq Models** to dynamically calculate `accuracy_score` and `f1_score`.")
+    st.markdown("Run live evaluation on test samples using **FinBERT** and **Groq Models** to dynamically calculate `accuracy_score`, `macro f1_score`, and `weighted f1_score`.")
     
     col_eval_cfg1, col_eval_cfg2 = st.columns(2)
     with col_eval_cfg1:
@@ -252,29 +252,27 @@ with tab2:
                             
                 elapsed_time = time.time() - start_time
                 
+                # Compute Metrics dynamically using sklearn
                 acc = accuracy_score(true_subset, predictions)
-                f1 = f1_score(true_subset, predictions, average='macro', zero_division=0)
-                prec = precision_score(true_subset, predictions, average='macro', zero_division=0)
-                rec = recall_score(true_subset, predictions, average='macro', zero_division=0)
+                macro_f1 = f1_score(true_subset, predictions, average='macro', zero_division=0)
+                weighted_f1 = f1_score(true_subset, predictions, average='weighted', zero_division=0)
                 
                 st.success(f"Evaluation completed in {elapsed_time:.2f} seconds!")
                 
-                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                col_m1, col_m2, col_m3 = st.columns(3)
                 col_m1.metric("Accuracy Score", f"{acc:.4f}")
-                col_m2.metric("Macro F1-Score", f"{f1:.4f}")
-                col_m3.metric("Macro Precision", f"{prec:.4f}")
-                col_m4.metric("Macro Recall", f"{rec:.4f}")
+                col_m2.metric("Macro F1-Score", f"{macro_f1:.4f}")
+                col_m3.metric("Weighted F1-Score", f"{weighted_f1:.4f}")
                 
                 st.markdown("### Dynamic Results DataFrame")
                 dynamic_res_df = pd.DataFrame([{
                     "Model": f"{eval_model} ({eval_paradigm})" if "finbert" not in eval_model.lower() else "FinBERT (Fine-Tuned)",
                     "Samples Evaluated": sample_size,
                     "Accuracy": acc,
-                    "Macro F1-Score": f1,
-                    "Precision": prec,
-                    "Recall": rec
+                    "Macro F1-Score": macro_f1,
+                    "Weighted F1-Score": weighted_f1
                 }])
-                st.dataframe(dynamic_res_df.style.highlight_max(axis=0, subset=['Accuracy', 'Macro F1-Score'], color='#a8df8e'), use_container_width=True)
+                st.dataframe(dynamic_res_df.style.highlight_max(axis=0, subset=['Accuracy', 'Macro F1-Score', 'Weighted F1-Score'], color='#a8df8e'), use_container_width=True)
                 
                 st.markdown("### Confusion Matrix")
                 labels = ['negative', 'neutral', 'positive']
