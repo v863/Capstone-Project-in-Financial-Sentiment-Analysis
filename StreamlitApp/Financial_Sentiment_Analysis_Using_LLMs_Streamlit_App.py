@@ -192,7 +192,7 @@ with tab2:
             [
                 "ProsusAI/finbert (Fine-Tuned Local)",
                 "openai/gpt-oss-120b",
-                "qwen/qwen3.8-27b",
+                "qwen/qwen2.5-32b",
                 "openai/gpt-oss-20b"
             ],
             key="eval_model_select"
@@ -296,7 +296,7 @@ with tab3:
             "Choose Model / Architecture",
             [
                 "openai/gpt-oss-120b",
-                "qwen/qwen3.8-27b",
+                "qwen/qwen2.5-32b",
                 "openai/gpt-oss-20b",
                 "ProsusAI/finbert (Fine-Tuned Local)"
             ],
