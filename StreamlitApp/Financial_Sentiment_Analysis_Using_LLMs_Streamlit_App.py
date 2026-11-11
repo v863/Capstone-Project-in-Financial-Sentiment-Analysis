@@ -53,7 +53,7 @@ st.markdown("""
 
 # App Title & Header
 st.title("📈 Financial Sentiment Analysis Using LLMs")
-st.markdown("A dynamic evaluation pipeline comparing Groq LLMs and Gemini (Gemini-3.5-Flash-Lite) against Fine-Tuned FinBERT on financial benchmark data.")
+st.markdown("A dynamic evaluation pipeline comparing Groq LLMs and Gemini (`gemini-3.5-flash-lite`) against Fine-Tuned FinBERT with real-time measured latency.")
 st.markdown("---")
 
 # Initialize FinBERT Pipeline (Cached)
@@ -132,7 +132,7 @@ gemini_api_key = st.sidebar.text_input("Enter Gemini API Key", type="password", 
 
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "This application evaluates financial text sentiment across multi-model configurations "
+    "This application evaluates financial text sentiment dynamically across multi-model configurations "
     "(Groq LLMs, Gemini-3.5-Flash-Lite, vs. FinBERT) using the Financial PhraseBank benchmark dataset."
 )
 
@@ -186,7 +186,7 @@ with tab1:
 # ==========================================
 with tab2:
     st.subheader("Dynamic Model Evaluation & Comparison")
-    st.markdown("Run live evaluation on test samples using **FinBERT**, **Groq Models**, and **Gemini-3.5-Flash-Lite** to dynamically calculate `accuracy_score`, `macro f1_score`, and `weighted f1_score`.")
+    st.markdown("Run live evaluation on test samples using **FinBERT**, **Groq Models**, and **Gemini-3.5-Flash-Lite** to dynamically calculate accuracy, F1 scores, and real-time inference latency.")
     
     col_eval_cfg1, col_eval_cfg2 = st.columns(2)
     with col_eval_cfg1:
@@ -204,7 +204,7 @@ with tab2:
     with col_eval_cfg2:
         eval_paradigm = st.selectbox("Select Paradigm", ["Zero-Shot", "Few-Shot"], key="eval_paradigm_select")
         
-    sample_size = st.slider("Select Number of Test Samples to Evaluate (for speed & API limits)", min_value=10, max_value=200, value=30, step=10)
+    sample_size = st.slider("Select Number of Test Samples to Evaluate", min_value=5, max_value=100, value=20, step=5)
 
     if st.button("🚀 Run Dynamic Evaluation", type="primary"):
         is_gemini = "gemini" in eval_model.lower()
@@ -220,7 +220,7 @@ with tab2:
                 true_subset = y_test.head(sample_size).reset_index(drop=True)
                 
                 predictions = []
-                start_time = time.time()
+                start_time = time.time() # Start measuring total batch duration
                 
                 if "finbert" in eval_model.lower():
                     for text in test_subset:
@@ -245,7 +245,7 @@ with tab2:
                                     'S1: "The company has no plans to expand production." -> neutral\n'
                                     'S2: "The international electronic industry company posted a net loss." -> negative\n'
                                     'S3: "With the new production plant the company will increase revenue." -> positive\n\n'
-                                    f'Classify the sentiment of this text: \"{text}\"'
+                                    f'Classify the sentiment of this text: "{text}"'
                                 )
                             response = client_gemini.models.generate_content(
                                 model=eval_model,
@@ -293,18 +293,20 @@ with tab2:
                         except Exception:
                             predictions.append("neutral")
                             
-                elapsed_time = time.time() - start_time
+                total_latency = time.time() - start_time
+                avg_latency_per_sample = total_latency / sample_size
                 
                 acc = accuracy_score(true_subset, predictions)
                 macro_f1 = f1_score(true_subset, predictions, average='macro', zero_division=0)
                 weighted_f1 = f1_score(true_subset, predictions, average='weighted', zero_division=0)
                 
-                st.success(f"Evaluation completed in {elapsed_time:.2f} seconds!")
+                st.success(f"Evaluation completed in {total_latency:.2f} seconds ({avg_latency_per_sample:.3f}s per sample)!")
                 
-                col_m1, col_m2, col_m3 = st.columns(3)
+                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                 col_m1.metric("Accuracy Score", f"{acc:.4f}")
                 col_m2.metric("Macro F1-Score", f"{macro_f1:.4f}")
                 col_m3.metric("Weighted F1-Score", f"{weighted_f1:.4f}")
+                col_m4.metric("Avg Latency / Sample", f"{avg_latency_per_sample:.2f}s")
                 
                 st.markdown("### Dynamic Results DataFrame")
                 dynamic_res_df = pd.DataFrame([{
@@ -312,7 +314,9 @@ with tab2:
                     "Samples Evaluated": sample_size,
                     "Accuracy": acc,
                     "Macro F1-Score": macro_f1,
-                    "Weighted F1-Score": weighted_f1
+                    "Weighted F1-Score": weighted_f1,
+                    "Total Latency (s)": round(total_latency, 2),
+                    "Avg Latency (s/sample)": round(avg_latency_per_sample, 3)
                 }])
                 st.dataframe(dynamic_res_df.style.highlight_max(axis=0, subset=['Accuracy', 'Macro F1-Score', 'Weighted F1-Score'], color='#a8df8e'), use_container_width=True)
                 
@@ -330,7 +334,7 @@ with tab2:
 # ==========================================
 with tab3:
     st.header("Live Headline Predictor")
-    st.markdown("Test individual headlines or analyst notes in real-time across different model configurations and prompt paradigms.")
+    st.markdown("Test individual headlines or analyst notes in real-time with precise measured query latency.")
     
     col_cfg1, col_cfg2 = st.columns(2)
     with col_cfg1:
@@ -366,10 +370,11 @@ with tab3:
                     pred_label = res['label'].strip().lower()
                     confidence = res['score']
                     
-                    st.success(f"Completed in {elapsed:.2f}s using FinBERT")
-                    c1, c2 = st.columns(2)
+                    st.success(f"Completed in {elapsed:.3f}s using FinBERT")
+                    c1, c2, c3 = st.columns(3)
                     c1.metric("Predicted Sentiment", pred_label.upper())
                     c2.metric("Confidence Score", f"{confidence:.4f}")
+                    c3.metric("Measured Latency", f"{elapsed:.3f}s")
                 elif "gemini" in model_choice.lower():
                     if not gemini_api_key:
                         st.error("⚠️ Please provide a valid Gemini API Key in the sidebar.")
@@ -388,7 +393,7 @@ with tab3:
                                     'S1: "The company has no plans to expand production." -> neutral\n'
                                     'S2: "The international electronic industry company posted a net loss." -> negative\n'
                                     'S3: "With the new production plant the company will increase revenue." -> positive\n\n'
-                                    f'Classify the sentiment of this text (return only positive, negative, or neutral): \"{user_input}\"'
+                                    f'Classify the sentiment of this text (return only positive, negative, or neutral): "{user_input}"'
                                 )
                             start_time = time.time()
                             response = client_gemini.models.generate_content(
@@ -402,8 +407,10 @@ with tab3:
                             elapsed = time.time() - start_time
                             pred_label = response.text.strip().lower()
                             
-                            st.success(f"Completed in {elapsed:.2f}s using {model_choice} ({prompt_paradigm})")
-                            st.metric("Predicted Sentiment", pred_label.upper())
+                            st.success(f"Completed in {elapsed:.3f}s using {model_choice} ({prompt_paradigm})")
+                            c1, c2 = st.columns(2)
+                            c1.metric("Predicted Sentiment", pred_label.upper())
+                            c2.metric("Measured Latency", f"{elapsed:.3f}s")
                         except Exception as e:
                             st.error(f"Gemini API Execution Error: {e}")
                 else:
@@ -444,8 +451,10 @@ with tab3:
                             
                             pred_label = resp.choices[0].message.content.strip().lower()
                             
-                            st.success(f"Completed in {elapsed:.2f}s using {model_choice} ({prompt_paradigm})")
-                            st.metric("Predicted Sentiment", pred_label.upper())
+                            st.success(f"Completed in {elapsed:.3f}s using {model_choice} ({prompt_paradigm})")
+                            c1, c2 = st.columns(2)
+                            c1.metric("Predicted Sentiment", pred_label.upper())
+                            c2.metric("Measured Latency", f"{elapsed:.3f}s")
                             
                         except Exception as e:
                             st.error(f"API Execution Error: {e}")
