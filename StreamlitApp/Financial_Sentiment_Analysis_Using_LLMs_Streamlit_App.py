@@ -381,21 +381,14 @@ with tab3:
                                 "into three categories: positive, negative, or neutral sentiment."
                             )
                             if prompt_paradigm == "Zero-Shot":
-                                prompt = f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:
-
-"{user_input}""
+                                prompt = f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:\n\n\"{user_input}\""
                             else:
                                 prompt = (
-                                    'Here are some example demonstrations for sentiment classification:
-'
-                                    'S1: "The company has no plans to expand production." -> neutral
-'
-                                    'S2: "The international electronic industry company posted a net loss." -> negative
-'
-                                    'S3: "With the new production plant the company will increase revenue." -> positive
-
-'
-                                    f'Classify the sentiment of this text (return only positive, negative, or neutral): "{user_input}"'
+                                    'Here are some example demonstrations for sentiment classification:\n'
+                                    'S1: "The company has no plans to expand production." -> neutral\n'
+                                    'S2: "The international electronic industry company posted a net loss." -> negative\n'
+                                    'S3: "With the new production plant the company will increase revenue." -> positive\n\n'
+                                    f'Classify the sentiment of this text (return only positive, negative, or neutral): \"{user_input}\"'
                                 )
                             start_time = time.time()
                             response = client_gemini.models.generate_content(
@@ -429,25 +422,20 @@ with tab3:
                                     {"role": "system", "content": system_prompt},
                                     {
                                         "role": "user",
-                                        "content": f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:
-
-"{user_input}""
+                                        "content": f"Please classify the following sentence into exactly one sentiment category (positive, negative, or neutral). Return only the category name:\n\n\"{user_input}\""
                                     }
                                 ]
                             else:
                                 few_shot_examples_text = (
-                                    'S1: "The company has no plans to expand production." -> neutral
-'
-                                    'S2: "The international electronic industry company posted a net loss." -> negative
-'
+                                    'S1: "The company has no plans to expand production." -> neutral\n'
+                                    'S2: "The international electronic industry company posted a net loss." -> negative\n'
                                     'S3: "With the new production plant the company will increase revenue." -> positive'
                                 )
                                 messages = [
                                     {"role": "system", "content": "Here are some example demonstrations for sentiment classification. " + system_prompt},
-                                    {"role": "user", "content": "Here are training examples:
-" + few_shot_examples_text},
+                                    {"role": "user", "content": "Here are training examples:\n" + few_shot_examples_text},
                                     {"role": "assistant", "content": "Understood. I will classify subsequent texts into positive, negative, or neutral."},
-                                    {"role": "user", "content": f"Classify the sentiment of this text (return only positive, negative, or neutral): "{user_input}""}
+                                    {"role": "user", "content": f"Classify the sentiment of this text (return only positive, negative, or neutral): \"{user_input}\""}
                                 ]
                             
                             start_time = time.time()
