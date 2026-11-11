@@ -231,21 +231,18 @@ with tab2:
                             if eval_paradigm == "Zero-Shot":
                                 messages = [
                                     {"role": "system", "content": system_prompt},
-                                    {"role": "user", "content": f"Classify the sentiment of this text into positive, negative, or neutral:
-
-\"{text}\""}
+                                    {"role": "user", "content": f"Classify the sentiment of this text into positive, negative, or neutral:\n\n\"{text}\""}
                                 ]
                             else:
                                 messages = [
                                     {"role": "system", "content": "Here are some example demonstrations for sentiment classification. " + system_prompt},
                                     {"role": "user", "content": 'S1: "The company has no plans to expand production." -> neutral\nS2: "The international electronic industry company posted a net loss." -> negative\nS3: "With the new production plant the company will increase revenue." -> positive'},
                                     {"role": "assistant", "content": "Understood. I will classify subsequent texts into positive, negative, or neutral."},
-                                    {"role": "user", "content": f"Classify the sentiment of this text: \"{text}\""}
+                                    {"role": "user", "content": f"Classify the sentiment of this text:\n\n\"{text}\""}
                                 ]
                             resp = safe_chat_completion(client=client, messages=messages, model=eval_model, temperature=0.0)
                             pred = resp.choices[0].message.content.strip().lower()
                             if pred not in ['positive', 'negative', 'neutral']:
-                                # fallback substring check
                                 if 'pos' in pred: pred = 'positive'
                                 elif 'neg' in pred: pred = 'negative'
                                 else: pred = 'neutral'
@@ -255,7 +252,6 @@ with tab2:
                             
                 elapsed_time = time.time() - start_time
                 
-                # Compute Metrics dynamically using sklearn
                 acc = accuracy_score(true_subset, predictions)
                 f1 = f1_score(true_subset, predictions, average='macro', zero_division=0)
                 prec = precision_score(true_subset, predictions, average='macro', zero_division=0)
