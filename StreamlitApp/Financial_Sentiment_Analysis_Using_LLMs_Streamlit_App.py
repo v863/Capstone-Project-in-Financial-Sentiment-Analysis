@@ -12,11 +12,7 @@ from nltk.stem import WordNetLemmatizer
 from groq import Groq, RateLimitError
 from transformers import pipeline
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import confusion_matrix, accuracy_score, f1_score
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, f1_score
 
 # Ensure NLTK resources are available
 try:
@@ -28,7 +24,7 @@ except Exception:
 
 # Page Configuration
 st.set_page_config(
-    page_title="Financial Sentiment Analysis Using LLMs & ML",
+    page_title="Financial Sentiment Analysis Using LLMs",
     page_icon="📈",
     layout="wide"
 )
@@ -54,8 +50,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Title & Header
-st.title("📈 Financial Sentiment Analysis: Dynamic ML & LLM Pipeline")
-st.markdown("A dynamic evaluation pipeline comparing Statistical Classifiers (TF-IDF + LogReg/SVM/RF), FinBERT, and Groq LLMs on the Financial PhraseBank dataset.")
+st.title("📈 Financial Sentiment Analysis Using LLMs")
+st.markdown("A dynamic evaluation pipeline comparing Groq LLMs (Zero-Shot & Few-Shot) against Fine-Tuned FinBERT on financial benchmark data.")
 st.markdown("---")
 
 # Initialize FinBERT Pipeline (Cached)
@@ -65,9 +61,9 @@ def load_finbert():
 
 finbert_pipeline = load_finbert()
 
-# Load and Preprocess Dataset & Train TF-IDF Models
+# Load and Train/Split function
 @st.cache_data
-def load_and_train_ml_models():
+def load_and_train_models():
     path = kagglehub.dataset_download("ankurzing/sentiment-analysis-for-financial-news")
     csv_path = os.path.join(path, "all-data.csv")
     
@@ -94,36 +90,19 @@ def load_and_train_ml_models():
         random_state=42,
         stratify=df['Sentiment']
     )
-    
-    # TF-IDF Vectorizer
-    vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))
-    X_train_tfidf = vectorizer.fit_transform(X_train)
-    X_test_tfidf = vectorizer.transform(X_test)
-    
-    # Train Classical Models
-    models = {
-        "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
-        "Linear SVM": SVC(kernel='linear', random_state=42),
-        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42)
-    }
-    
-    trained_models = {}
-    for name, model in models.items():
-        model.fit(X_train_tfidf, y_train)
-        trained_models[name] = model
-        
-    return df, X_test, y_test, X_test_tfidf, vectorizer, trained_models
+    return df, X_train, X_test, y_train, y_test
 
 try:
-    df, X_test, y_test, X_test_tfidf, vectorizer, trained_models = load_and_train_ml_models()
+    df, X_train, X_test, y_train, y_test = load_and_train_models()
     total_records = df.shape[0]
+    train_shape = X_train.shape[0]
     test_shape = X_test.shape[0]
 except Exception as e:
     total_records = 4840
+    train_shape = 3872
     test_shape = 968
     df = pd.DataFrame(columns=["Sentiment", "News Headline", "Cleaned_Headline"])
     X_test, y_test = pd.Series(), pd.Series()
-    trained_models = {}
 
 # Helper function for Groq API calls with retry mechanism
 def safe_chat_completion(client, messages, model, temperature=0.0, max_retries=3):
@@ -150,14 +129,14 @@ groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password", valu
 
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "This application evaluates financial text sentiment dynamically across TF-IDF ML classifiers, "
-    "FinBERT, and Groq LLMs using the Financial PhraseBank benchmark dataset."
+    "This application evaluates financial text sentiment across multi-model configurations "
+    "(Groq LLMs vs. Fine-Tuned FinBERT) using the Financial PhraseBank benchmark dataset."
 )
 
 # Main Navigation Tabs
 tab1, tab2, tab3 = st.tabs([
     "📈 EDA & Overview", 
-    "🏆 Model Performance & Benchmark", 
+    "🏆 Model Performance", 
     "🔍 Live Headline Predictor"
 ])
 
@@ -173,9 +152,9 @@ with tab1:
     with col_stat1:
         st.metric(label="Total Records Loaded", value=f"{total_records:,}")
     with col_stat2:
-        st.metric(label="Test Split Shape", value=f"{test_shape}")
+        st.metric(label="Train Split Shape", value=f"{train_shape}")
     with col_stat3:
-        st.metric(label="Classes", value="positive, neutral, negative")
+        st.metric(label="Test Split Shape", value=f"{test_shape}")
         
     st.markdown("---")
     
@@ -200,50 +179,41 @@ with tab1:
         st.pyplot(fig)
 
 # ==========================================
-# TAB 2: MODEL PERFORMANCE & BENCHMARK
+# TAB 2: MODEL PERFORMANCE (DYNAMIC EVALUATION)
 # ==========================================
 with tab2:
-    st.subheader("Dynamic Model Evaluation & Benchmarking")
-    st.markdown("Run live evaluation on test samples using **TF-IDF ML Classifiers** (Logistic Regression, Linear SVM, Random Forest), **FinBERT**, and **Groq LLMs** (`gpt-oss-120b`, `qwen3.8-27b`, `gpt-oss-20b`) to dynamically compute `Accuracy`, `Macro F1-Score`, and `Weighted F1-Score`.")
+    st.subheader("Dynamic Model Evaluation & Comparison")
+    st.markdown("Run live evaluation on test samples using **FinBERT** and **Groq Models** to dynamically calculate `accuracy_score`, `macro f1_score`, and `weighted f1_score`.")
     
     col_eval_cfg1, col_eval_cfg2 = st.columns(2)
     with col_eval_cfg1:
         eval_model = st.selectbox(
-            "Select Model / Classifier",
+            "Select Model for Dynamic Evaluation",
             [
-                "Logistic Regression (TF-IDF)",
-                "Linear SVM (TF-IDF)",
-                "Random Forest (TF-IDF)",
                 "ProsusAI/finbert (Fine-Tuned Local)",
-                "gpt-oss-120b",
-                "qwen3.8-27b",
-                "gpt-oss-20b"
+                "openai/gpt-oss-120b",
+                "qwen/qwen2.5-32b",
+                "openai/gpt-oss-20b"
             ],
             key="eval_model_select"
         )
     with col_eval_cfg2:
-        eval_paradigm = st.selectbox("Select Paradigm (for LLMs)", ["Zero-Shot", "Few-Shot"], key="eval_paradigm_select")
+        eval_paradigm = st.selectbox("Select Paradigm", ["Zero-Shot", "Few-Shot"], key="eval_paradigm_select")
         
-    sample_size = st.slider("Select Number of Test Samples to Evaluate", min_value=10, max_value=200, value=30, step=10)
+    sample_size = st.slider("Select Number of Test Samples to Evaluate (for speed & API limits)", min_value=10, max_value=200, value=30, step=10)
 
     if st.button("🚀 Run Dynamic Evaluation", type="primary"):
-        is_llm = eval_model in ["gpt-oss-120b", "qwen3.8-27b", "gpt-oss-20b"]
-        if is_llm and not groq_api_key:
-            st.error("⚠️ Please provide a valid Groq API Key in the sidebar for Groq LLMs.")
+        if "finbert" not in eval_model.lower() and not groq_api_key:
+            st.error("⚠️ Please provide a valid Groq API Key in the sidebar for Groq models.")
         else:
-            with st.spinner(f"Evaluating {eval_model} on {sample_size} test samples..."):
+            with st.spinner(f"Evaluating {eval_model} ({eval_paradigm}) on {sample_size} test samples..."):
                 test_subset = X_test.head(sample_size).reset_index(drop=True)
                 true_subset = y_test.head(sample_size).reset_index(drop=True)
                 
                 predictions = []
                 start_time = time.time()
                 
-                if "TF-IDF" in eval_model:
-                    model_key = eval_model.split(" (")[0]
-                    clf = trained_models[model_key]
-                    subset_tfidf = vectorizer.transform(test_subset)
-                    predictions = clf.predict(subset_tfidf)
-                elif "finbert" in eval_model.lower():
+                if "finbert" in eval_model.lower():
                     for text in test_subset:
                         try:
                             res = finbert_pipeline(text[:512])[0]
@@ -282,6 +252,7 @@ with tab2:
                             
                 elapsed_time = time.time() - start_time
                 
+                # Compute Metrics dynamically using sklearn
                 acc = accuracy_score(true_subset, predictions)
                 macro_f1 = f1_score(true_subset, predictions, average='macro', zero_division=0)
                 weighted_f1 = f1_score(true_subset, predictions, average='weighted', zero_division=0)
@@ -295,12 +266,11 @@ with tab2:
                 
                 st.markdown("### Dynamic Results DataFrame")
                 dynamic_res_df = pd.DataFrame([{
-                    "Model": f"{eval_model} ({eval_paradigm})" if is_llm else eval_model,
+                    "Model": f"{eval_model} ({eval_paradigm})" if "finbert" not in eval_model.lower() else "FinBERT (Fine-Tuned)",
                     "Samples Evaluated": sample_size,
                     "Accuracy": acc,
                     "Macro F1-Score": macro_f1,
-                    "Weighted F1-Score": weighted_f1,
-                    "Latency (s)": round(elapsed_time, 2)
+                    "Weighted F1-Score": weighted_f1
                 }])
                 st.dataframe(dynamic_res_df.style.highlight_max(axis=0, subset=['Accuracy', 'Macro F1-Score', 'Weighted F1-Score'], color='#a8df8e'), use_container_width=True)
                 
@@ -318,20 +288,17 @@ with tab2:
 # ==========================================
 with tab3:
     st.header("Live Headline Predictor")
-    st.markdown("Test individual headlines or analyst notes in real-time across statistical models, FinBERT, and Groq LLMs.")
+    st.markdown("Test individual headlines or analyst notes in real-time across different model configurations and prompt paradigms.")
     
     col_cfg1, col_cfg2 = st.columns(2)
     with col_cfg1:
         model_choice = st.selectbox(
             "Choose Model / Architecture",
             [
-                "gpt-oss-120b",
-                "qwen3.8-27b",
-                "gpt-oss-20b",
-                "ProsusAI/finbert (Fine-Tuned Local)",
-                "Logistic Regression (TF-IDF)",
-                "Linear SVM (TF-IDF)",
-                "Random Forest (TF-IDF)"
+                "openai/gpt-oss-120b",
+                "qwen/qwen2.5-32b",
+                "openai/gpt-oss-20b",
+                "ProsusAI/finbert (Fine-Tuned Local)"
             ],
             key="live_model_choice"
         )
@@ -348,18 +315,7 @@ with tab3:
             st.warning("Please enter some text to analyze.")
         else:
             with st.spinner("Processing prediction..."):
-                if "TF-IDF" in model_choice:
-                    start_time = time.time()
-                    model_key = model_choice.split(" (")[0]
-                    clf = trained_models[model_key]
-                    cleaned_input = vectorizer.transform([user_input])
-                    pred_label = clf.predict(cleaned_input)[0]
-                    elapsed = time.time() - start_time
-                    
-                    st.success(f"Completed in {elapsed:.2f}s using {model_choice}")
-                    st.metric("Predicted Sentiment", pred_label.upper())
-                    
-                elif "finbert" in model_choice.lower():
+                if "finbert" in model_choice.lower():
                     start_time = time.time()
                     res = finbert_pipeline(user_input[:512])[0]
                     elapsed = time.time() - start_time
