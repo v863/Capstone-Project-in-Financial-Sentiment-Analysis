@@ -130,8 +130,8 @@ page = st.sidebar.radio("Go to:", [
 ])
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 **Financial Sentiment Analysis with Deep Learning**
-A BiLSTM trained from scratch (baseline to tuned regularisation).")
+st.sidebar.info("""💡 **Financial Sentiment Analysis with Deep Learning**
+A BiLSTM trained from scratch (baseline to tuned regularisation).""")
 
 # ================= PAGE 1: EDA =================
 if page == "📊 Project Overview & EDA":
