@@ -194,9 +194,9 @@ elif page == "⚙️ Model Architecture & Steps":
     st.markdown('<p class="main-header">Model Architecture & Iterative Improvements</p>', unsafe_allow_html=True)
     st.markdown("All models are trained **from scratch** — no pretrained weights or transformer embeddings.")
 
-    st.markdown("```
+    st.markdown("""```
 Token IDs ──► Embedding (128-d) ──► Bidirectional LSTM (128 units/dir) ──► Pooling ──► Dropout ──► Linear ──► 3 Class Logits
-```")
+```""")
 
     st.markdown("### 🔬 Step-by-Step Evolution")
     
