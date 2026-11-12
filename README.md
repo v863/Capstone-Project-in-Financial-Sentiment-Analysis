@@ -4,8 +4,7 @@
 This repository contains the codebase, notebooks, and applications for the **Financial Sentiment Analysis Capstone Project**. The project explores and compares various approaches—ranging from traditional statistical models to modern Large Language Models (LLMs) like ChatGPT, Qwen, and Gemini—to analyze and classify sentiment in financial texts.
 
 ## Project Structure
-- **GoogleColab/**: Jupyter notebooks detailing data exploration, preprocessing, and model implementation for both statistical models and LLMs (ChatGPT, Qwen, Gemini).
-- **GoogleSlides/**: Presentation slides summarizing the capstone project workflow, methodology, and results.
+- **GoogleColab/**: Jupyter notebooks detailing data exploration, preprocessing, and model implementation for both statistical models and LLMs (ChatGPT, Qwen, Gemini, Nemotron, Fine Tuning).
 - **StreamlitApp/**: Interactive Streamlit applications built to demonstrate the sentiment analysis models in action.
   - Statistical model app
   - LLM-based apps (Gemini and other LLMs)
