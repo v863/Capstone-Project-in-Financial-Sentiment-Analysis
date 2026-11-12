@@ -96,13 +96,13 @@ engine_option = st.sidebar.selectbox(
 
 # Model list mapping according to active provider
 if "Groq" in engine_option:
-    model_list = ["llama3-70b-8192", "llama3-8b-8192", "qwen/qwen2.5-32b"]
+    model_list = ["openai/gpt-oss-120b","qwen/qwen2.5-32b","openai/gpt-oss-20b",]
 elif "Nemotron" in engine_option:
     model_list = ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-4-349b-base"]
 elif "OpenAI" in engine_option:
-    model_list = ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"]
+    model_list = ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo","nvidia/nemotron-3-ultra-550b-a55b:free"]
 else:
-    model_list = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    model_list = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash-lite"]
 
 selected_model = st.sidebar.selectbox("Model Identifier", model_list)
 prompt_mode = st.sidebar.radio("Prompt Paradigm", ["Zero-Shot", "Few-Shot"])
