@@ -91,7 +91,7 @@ st.markdown("### Dynamic Multi-Model Execution & Benchmarking Suite")
 st.sidebar.title("⚙️ Dynamic Engine Controls")
 engine_choice = st.sidebar.selectbox(
     "Select Model Engine",
-    ["Groq API (LLaMA-3 / Qwen)", "Google GenAI (Gemini)", "NVIDIA Nemotron (Mock/API)", "QLoRA/FinBERT Local Simulation"]
+    ["Groq API (Qwen)","Groq API (OpenAI)", "Google GenAI (Gemini)", "NVIDIA Nemotron (Mock/API)", "QLoRA/FinBERT Local Simulation"]
 )
 
 prompt_mode = st.sidebar.radio("Prompting Paradigm", ["Zero-Shot", "Few-Shot"])
@@ -203,7 +203,7 @@ with tab2:
     st.markdown("Comparative evaluation matrix across Groq, QLoRA, Google GenAI, and Nemotron configurations[cite: 1, 2, 3].")
 
     benchmark_data = {
-        "Model Engine": ["Groq (llama-3-70b)", "Google GenAI (Gemini Flash)", "QLoRA Fine-Tuned (Qwen 0.5B)", "NVIDIA Nemotron", "FinBERT (Baseline)"],
+        "Model Engine": ["Groq (Qwen2.5-32B)","Groq (GPT-OSS-120B)", "Google GenAI (Gemini Flash)", "QLoRA Fine-Tuned (Qwen 0.5B)", "NVIDIA Nemotron", "FinBERT (Baseline)"],
         "Paradigm": ["Few-Shot", "Few-Shot", "QLoRA Fine-Tune", "Zero-Shot", "Fine-Tuned Transformer"],
         "Accuracy": [0.79, 0.86, 0.83, 0.84, 0.85],
         "Precision": [0.81, 0.87, 0.84, 0.85, 0.88],
@@ -260,7 +260,11 @@ with tab3:
                                 {"role": "system", "content": "Classify the sentiment of the financial text as positive, negative, or neutral. Return only the label."},
                                 {"role": "user", "content": user_headline}
                             ],
-                            model="llama3-70b-8192",
+                            model=[
+                                "openai/gpt-oss-120b",
+                                "qwen/qwen2.5-32b",
+                                "openai/gpt-oss-20b"
+                            ],
                             temperature=temperature
                         )
                         prediction_output = chat_completion.choices[0].message.content.strip().lower()
@@ -272,7 +276,7 @@ with tab3:
                     try:
                         client = genai.Client(api_key=genai_api_key)
                         response = client.models.generate_content(
-                            model="gemini-2.5-flash",
+                            model="gemini-3.5-flash-lite",
                             contents=f"Classify this financial headline into positive, negative, or neutral. Return only the word: {user_headline}"
                         )
                         prediction_output = response.text.strip().lower()
