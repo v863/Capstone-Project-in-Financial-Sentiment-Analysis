@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, cla
 
 # Page Configuration
 st.set_page_config(
-    page_title="Financial Sentiment Analysis Suite",
+    page_title="Financial Sentiment Analysis Using LLMs",
     page_icon="📈",
     layout="wide"
 )
@@ -70,6 +70,10 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# Title and Header Requirement
+st.title("Financial Sentiment Analysis Using LLMs")
+st.markdown("### Multi-Model Comparison & Benchmarking Suite")
 
 # Data Acquisition & Caching
 @st.cache_resource
