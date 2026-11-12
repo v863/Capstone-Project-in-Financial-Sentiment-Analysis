@@ -3,17 +3,17 @@ import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, f1_score, accuracy_score
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix, classification_report, f1_score, accuracy_score
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 import random
 import io
 import csv
+from pathlib import Path
 
 st.set_page_config(
-    page_title="Financial Sentiment Analysis",
+    page_title="Financial Sentiment Analysis (Dynamic)",
     page_icon="📈",
     layout="wide"
 )
@@ -21,25 +21,12 @@ st.set_page_config(
 # --- STYLES ---
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
-        font-weight: 700;
-    }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #555555;
-    }
-    .metric-card {
-        background-color: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    }
+    .main-header { font-size: 2.5rem; color: #1f77b4; font-weight: 700; }
+    .sub-header { font-size: 1.2rem; color: #555555; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- REPRODUCIBILITY & TOKENIZER ---
+# --- REPRODUCIBILITY & DEVICE ---
 SEED = 42
 def set_seed(seed):
     random.seed(seed)
@@ -49,6 +36,7 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 set_seed(SEED)
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 TOKEN_PATTERN = re.compile(r"\w+(?:['’]\w+)*|[^\w\s]")
 
@@ -86,242 +74,288 @@ class SentimentModel(nn.Module):
             features = torch.cat((maximum, mean), dim=1)
         return self.classifier(self.dropout(features))
 
-# --- DATA LOADING CACHED ---
+# --- DATA LOADING & PREPROCESSING ---
 @st.cache_data
-def load_data():
-    # Fallback or synthetic / sample loader if file is not found, but we can look for all-data.csv
-    import os
-    path = "all-data.csv"
-    if not os.path.exists(path):
-        # Create a tiny mock dataframe if all-data.csv isn't uploaded yet so the app doesn't crash
+def load_and_preprocess_data():
+    DATA_FILE = "all-data.csv"
+    SEARCH_PATHS = [Path(DATA_FILE), Path("dataset") / DATA_FILE, Path("/content") / DATA_FILE]
+    data_path = next((path for path in SEARCH_PATHS if path.exists()), None)
+    
+    if data_path is None:
+        # Fallback mock data if file doesn't exist yet
         data = [
             ("Operating profit rose to EUR 13.1 mn from EUR 8.7 mn .", "positive"),
             ("The international electronic industry company Elcoteq has laid off tens of employees from its Tallinn facility .", "negative"),
             ("According to Gran , the company has no plans to move all production to Russia .", "neutral"),
             ("Sales increased by 15% during the third quarter .", "positive"),
             ("The company reported a net loss of 2.3 million euros .", "negative"),
-            ("Trading remained stable throughout the morning session .", "neutral")
-        ]
-        return pd.DataFrame(data, columns=["text", "label"])
-    
-    raw = Path(path).read_bytes()
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw.decode("latin-1")
-    records = list(csv.reader(io.StringIO(text, newline="")))
-    if records and records[0][0].strip().lower() in ("label", "sentiment"):
-        records = records[1:]
-    rows = [(r[1].strip(), r[0].strip().lower()) for r in records if len(r) == 2]
-    return pd.DataFrame(rows, columns=["text", "label"])
+            ("Trading remained stable throughout the morning session .", "neutral"),
+            ("Operating loss narrowed down significantly over the fiscal year .", "positive"),
+            ("Revenues decreased less than expected by financial analysts .", "negative")
+        ] * 100 # Multiply to have enough rows for batching
+        df_raw = pd.DataFrame(data, columns=["text", "label"])
+    else:
+        raw = Path(data_path).read_bytes()
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+        records = list(csv.reader(io.StringIO(text, newline="")))
+        if records and records[0][0].strip().lower() in ("label", "sentiment"):
+            records = records[1:]
+        rows = [(r[1].strip(), r[0].strip().lower()) for r in records if len(r) == 2]
+        df_raw = pd.DataFrame(rows, columns=["text", "label"])
 
-df = load_data()
-LABELS = ["negative", "neutral", "positive"]
+    # Clean duplicates & conflicts
+    keys = df_raw["text"].map(lambda t: tuple(tokenize(t)))
+    labels_per_text = df_raw.groupby(keys)["label"].nunique()
+    conflicting = set(labels_per_text[labels_per_text > 1].index)
+    clean = df_raw.loc[~keys.map(lambda k: k in conflicting)].copy()
+    clean = clean.loc[~keys.duplicated(keep="first")]
+    return clean
+
+df = load_and_preprocess_data()
+LABELS = sorted(df["label"].unique())
 LABEL_IDS = {l: i for i, l in enumerate(LABELS)}
 CLASS_COLORS = {"negative": "#d62728", "neutral": "#8c8c8c", "positive": "#2ca02c"}
+
+# Stratified Split function
+def stratified_split(rows, validation_fraction=0.15, test_fraction=0.15, seed=SEED):
+    by_label = defaultdict(list)
+    for row in rows:
+        by_label[row[1]].append(row)
+    rng = random.Random(seed)
+    train, validation, test = [], [], []
+    for label, examples in sorted(by_label.items()):
+        examples = examples[:]
+        rng.shuffle(examples)
+        n_val = max(1, int(len(examples) * validation_fraction))
+        n_test = max(1, int(len(examples) * test_fraction))
+        validation += examples[:n_val]
+        test += examples[n_val:n_val + n_test]
+        train += examples[n_val + n_test:]
+    for split in (train, validation, test):
+        rng.shuffle(split)
+    return train, validation, test
+
+rows = list(zip(df["text"], df["label"]))
+train_rows, val_rows, test_rows = stratified_split(rows)
+SPLITS = {"train": train_rows, "validation": val_rows, "test": test_rows}
+
+# --- VOCAB & DATASET HELPERS ---
+def build_vocab(train_rows, normalize_numbers=False, min_frequency=1, max_vocab=30000):
+    counts = Counter(tok for text, _ in train_rows for tok in tokenize(text, normalize_numbers))
+    vocab = {"<pad>": 0, "<unk>": 1}
+    for token, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+        if count < min_frequency or len(vocab) >= max_vocab:
+            break
+        vocab.setdefault(token, len(vocab))
+    return vocab
+
+def encode(text, vocab, max_length=128, normalize_numbers=False):
+    ids = [vocab.get(tok, 1) for tok in tokenize(text, normalize_numbers)[:max_length]]
+    return torch.tensor(ids or [1], dtype=torch.long)
+
+class TextDataset(torch.utils.data.Dataset):
+    def __init__(self, rows, vocab, max_length, normalize_numbers):
+        self.examples = [(encode(text, vocab, max_length, normalize_numbers), LABEL_IDS[label]) for text, label in rows]
+    def __len__(self):
+        return len(self.examples)
+    def __getitem__(self, index):
+        return self.examples[index]
+
+def collate(batch):
+    sequences, labels = zip(*batch)
+    lengths = torch.tensor([len(seq) for seq in sequences], dtype=torch.long)
+    return torch.nn.utils.rnn.pad_sequence(sequences, batch_first=True, padding_value=0), lengths, torch.tensor(labels)
 
 # --- SIDEBAR NAVIGATION ---
 st.sidebar.markdown("## 🧭 Navigation")
 page = st.sidebar.radio("Go to:", [
-    "📊 Project Overview & EDA",
-    "⚙️ Model Architecture & Steps",
-    "🚀 Interactive Inference Demo",
-    "📈 Results & Comparison"
+    "📊 Dataset Overview & EDA",
+    "🚀 Dynamic Model Training",
+    "🔮 Live Model Inference",
+    "📈 Results Evaluation"
 ])
 
 st.sidebar.markdown("---")
-st.sidebar.info("""💡 **Financial Sentiment Analysis with Deep Learning**
-A BiLSTM trained from scratch (baseline to tuned regularisation).""")
+st.sidebar.info("💡 **Dynamic Deep Learning App**\nTrain PyTorch BiLSTMs live inside Streamlit!")
 
 # ================= PAGE 1: EDA =================
-if page == "📊 Project Overview & EDA":
-    st.markdown('<p class="main-header">Financial Sentiment Analysis with Deep Learning</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">A BiLSTM trained from scratch — baseline to step-by-step improvements.</p>', unsafe_allow_html=True)
-    
-    st.markdown("---")
+if page == "📊 Dataset Overview & EDA":
+    st.markdown('<p class="main-header">Financial Sentiment Analysis Dataset</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Exploratory Data Analysis on cleaned financial text data.</p>', unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Sentences", f"{len(df):,}")
-    col2.metric("Classes", "3 (Negative, Neutral, Positive)")
-    col3.metric("Architecture", "Embedding + Bidirectional LSTM")
+    col1.metric("Clean Sentences", f"{len(df):,}")
+    col2.metric("Train Split", f"{len(train_rows):,}")
+    col3.metric("Test Split", f"{len(test_rows):,}")
 
-    st.markdown("### 📋 Project Roadmap")
-    roadmap_data = [
-        {"#": 1, "Step": "Introduction", "Description": "Problem statement and domain-specific nuances"},
-        {"#": 2, "Step": "Setup", "Description": "Imports, reproducibility seeds, hardware detection"},
-        {"#": 3, "Step": "Dataset", "Description": "Loading Financial PhraseBank (~4,846 sentences)"},
-        {"#": 4, "Step": "EDA", "Description": "Class imbalance, sentence lengths, vocabulary analysis"},
-        {"#": 5, "Step": "Preprocessing", "Description": "Duplicate cleaning, stratified splitting (70/15/15)"},
-        {"#": 6, "Step": "Model & Training", "Description": "BiLSTM architecture, AdamW optimizer, early stopping"},
-        {"#": 7, "Step": "Model 1 – Baseline", "Description": "Initial working BiLSTM and evaluation"},
-        {"#": 8, "Step": "Model 2 – Representation", "Description": "Number normalisation & max/mean pooling"},
-        {"#": 9, "Step": "Model 3 – Regularisation", "Description": "Embedding dropout & weight decay"},
-        {"#": 10, "Step": "Model 4 – Tuning", "Description": "Optimised batch size and stronger decay"},
-        {"#": 11, "Step": "Results & Analysis", "Description": "Metrics comparison, confusion matrices, and error analysis"}
-    ]
-    st.dataframe(pd.DataFrame(roadmap_data).set_index("#"), use_container_width=True)
-
-    st.markdown("### 📊 Exploratory Data Analysis (EDA)")
+    counts = df["label"].value_counts()
+    df_counts = pd.DataFrame({"Count": counts, "Share (%)": (100 * counts / len(df)).round(1)})
+    st.dataframe(df_counts, use_container_width=True)
     
-    tab1, tab2 = st.tabs(["Class Distribution", "Sentence Lengths"])
-    
-    with tab1:
-        counts = df["label"].value_counts()
-        df_counts = pd.DataFrame({"Count": counts, "Share (%)": (100 * counts / len(df)).round(1)})
-        st.dataframe(df_counts, use_container_width=True)
-        
-        fig, ax = plt.subplots(figsize=(6, 3.5))
-        counts.plot.bar(ax=ax, color=[CLASS_COLORS[lbl] for lbl in counts.index], rot=0)
-        ax.set_title("Sentences per Sentiment Class")
-        ax.set_ylabel("Count")
-        st.pyplot(fig)
+    fig, ax = plt.subplots(figsize=(6, 3))
+    counts.plot.bar(ax=ax, color=[CLASS_COLORS[lbl] for lbl in counts.index], rot=0)
+    ax.set_title("Class Distribution")
+    st.pyplot(fig)
 
-    with tab2:
-        df["n_tokens"] = df["text"].map(lambda t: len(tokenize(t)))
-        st.dataframe(df.groupby("label")["n_tokens"].describe().round(1), use_container_width=True)
+# ================= PAGE 2: TRAINING =================
+elif page == "🚀 Dynamic Model Training":
+    st.markdown('<p class="main-header">Train BiLSTM Model Live</p>', unsafe_allow_html=True)
+    st.markdown("Configure hyperparameters and train a bidirectional LSTM network from scratch.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        epochs = st.slider("Epochs", 1, 15, 5)
+        batch_size = st.selectbox("Batch Size", [16, 32, 64], index=1)
+        lr = st.selectbox("Learning Rate", [1e-4, 1e-3, 2e-3], index=1)
+    with col2:
+        normalize_numbers = st.checkbox("Normalize Numbers (<num>) ?", value=True)
+        pooling_type = st.selectbox("Pooling Strategy", ["max_mean", "last"], index=0)
+        weight_decay = st.selectbox("Weight Decay (AdamW)", [0.0, 0.01, 0.05], index=1)
+
+    if st.button("🔥 Start Live Training", type="primary"):
+        vocab = build_vocab(train_rows, normalize_numbers=normalize_numbers)
+        train_loader = torch.utils.data.DataLoader(
+            TextDataset(train_rows, vocab, 128, normalize_numbers),
+            batch_size=batch_size, shuffle=True, collate_fn=collate
+        )
+        val_loader = torch.utils.data.DataLoader(
+            TextDataset(val_rows, vocab, 128, normalize_numbers),
+            batch_size=batch_size, shuffle=False, collate_fn=collate
+        )
+        test_loader = torch.utils.data.DataLoader(
+            TextDataset(test_rows, vocab, 128, normalize_numbers),
+            batch_size=batch_size, shuffle=False, collate_fn=collate
+        )
+
+        model = SentimentModel(
+            len(vocab), len(LABELS), embedding_dim=128, hidden_dim=128,
+            dropout=0.3, embedding_dropout=0.3, pooling=pooling_type
+        ).to(DEVICE)
+
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+        criterion = nn.CrossEntropyLoss()
+
+        history = []
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        @torch.inference_mode()
+        def evaluate_model(loader):
+            model.eval()
+            loss, targets, preds = 0.0, [], []
+            for tokens, lengths, labels in loader:
+                tokens, labels = tokens.to(DEVICE), labels.to(DEVICE)
+                logits = model(tokens, lengths)
+                loss += criterion(logits, labels).item() * len(labels)
+                preds.extend(logits.argmax(dim=1).cpu().numpy())
+                targets.extend(labels.cpu().numpy())
+            return loss / len(targets), accuracy_score(targets, preds), f1_score(targets, preds, average="macro")
+
+        for epoch in range(1, epochs + 1):
+            model.train()
+            train_loss = 0.0
+            for tokens, lengths, labels in train_loader:
+                tokens, labels = tokens.to(DEVICE), labels.to(DEVICE)
+                optimizer.zero_grad(set_to_none=True)
+                loss = criterion(model(tokens, lengths), labels)
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                train_loss += loss.item() * len(labels)
+            
+            train_loss /= len(train_rows)
+            val_loss, val_acc, val_f1 = evaluate_model(val_loader)
+            
+            history.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss, "val_f1": val_f1})
+            progress_bar.progress(epoch / epochs)
+            status_text.text(f"Epoch {epoch}/{epochs} | Train Loss: {train_loss:.3f} | Val Macro-F1: {val_f1:.3f}")
+
+        st.success("Training Completed Successfully!")
         
-        fig, ax = plt.subplots(figsize=(7, 3.5))
-        for lbl in ["negative", "neutral", "positive"]:
-            ax.hist(df.loc[df.label == lbl, "n_tokens"], bins=30, alpha=0.55, label=lbl, color=CLASS_COLORS[lbl])
-        ax.set_xlabel("Tokens per Sentence")
-        ax.set_ylabel("Frequency")
-        ax.set_title("Sentence Length Distribution")
+        # Save model and artifacts into session state for inference use
+        st.session_state["trained_model"] = model
+        st.session_state["vocab"] = vocab
+        st.session_state["normalize_numbers"] = normalize_numbers
+        st.session_state["pooling_type"] = pooling_type
+
+        # Plot training curves
+        df_hist = pd.DataFrame(history)
+        fig, ax = plt.subplots(figsize=(8, 3.5))
+        ax.plot(df_hist["epoch"], df_hist["train_loss"], label="Train Loss", marker="o")
+        ax.plot(df_hist["epoch"], df_hist["val_loss"], label="Val Loss", marker="o")
+        ax.set_xlabel("Epoch")
+        ax.set_title("Live Training & Validation Loss Curves")
         ax.legend()
         st.pyplot(fig)
 
-# ================= PAGE 2: ARCHITECTURE =================
-elif page == "⚙️ Model Architecture & Steps":
-    st.markdown('<p class="main-header">Model Architecture & Iterative Improvements</p>', unsafe_allow_html=True)
-    st.markdown("All models are trained **from scratch** — no pretrained weights or transformer embeddings.")
-
-    st.markdown("""```
-Token IDs ──► Embedding (128-d) ──► Bidirectional LSTM (128 units/dir) ──► Pooling ──► Dropout ──► Linear ──► 3 Class Logits
-```""")
-
-    st.markdown("### 🔬 Step-by-Step Evolution")
+# ================= PAGE 3: INFERENCE =================
+elif page == "🔮 Live Model Inference":
+    st.markdown('<p class="main-header">Dynamic Model Inference</p>', unsafe_allow_html=True)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-        #### **Model 1 – Baseline**
-        * Standard embedding & BiLSTM.
-        * Uses final hidden states (`last`).
-        * Dropout = 0.3.
-        * *Weakness:* Overfits rapidly; ignores number patterns.
-        
-        #### **Model 2 – Better Representation**
-        * **Number Normalisation:** Replaces numeric tokens with `<num>`.
-        * **Pooling:** Replaces final hidden state with **Max-pooling + Mean-pooling** over all sequence steps.
-        """)
-    with col2:
-        st.markdown("""
-        #### **Model 3 – Regularisation**
-        * Adds **Embedding Dropout (0.3)**.
-        * Increases classifier dropout to **0.5**.
-        * Introduces **Weight Decay (0.01)** via AdamW.
-        
-        #### **Model 4 – Tuning (Final)**
-        * Stronger weight decay (**0.05**).
-        * Smaller batch size (**16** instead of 32) for noisier, more robust updates.
-        """)
-
-# ================= PAGE 3: INTERACTIVE INFERENCE =================
-elif page == "🚀 Interactive Inference Demo":
-    st.markdown('<p class="main-header">Interactive Financial Sentiment Classifier</p>', unsafe_allow_html=True)
-    st.markdown("Test sentences against our trained BiLSTM model logic.")
-
-    sample_sentences = [
-        "Operating profit rose to EUR 13.1 mn from EUR 8.7 mn .",
-        "The company announced a significant net loss for the third quarter.",
-        "According to the management, business operations remain stable.",
-        "Sales increased less than expected amidst stiff market competition.",
-        "The board has approved the acquisition of 50.1 percent stake in the firm."
-    ]
-
-    selected_sample = st.selectbox("Choose a sample sentence or type your own below:", ["-- Custom Input --"] + sample_sentences)
-    
-    if selected_sample == "-- Custom Input --":
-        user_input = st.text_area("Enter financial news sentence:", "Operating profit exceeded analyst expectations by 12 percent .")
+    if "trained_model" not in st.session_state:
+        st.warning("⚠️ No trained model found in session state! Please go to **'🚀 Dynamic Model Training'** and click 'Start Live Training' first.")
     else:
-        user_input = st.text_area("Enter financial news sentence:", selected_sample)
-
-    if st.button("🔮 Analyze Sentiment", type="primary"):
-        with st.spinner("Analyzing text..."):
-            # Simple heuristic / simulated model inference response matching trained BiLSTM behavior 
-            # for demonstration when weights file isn't precompiled in the static environment
-            tokens = tokenize(user_input, normalize_numbers=True)
-            text_lower = user_input.lower()
-            
-            # Simple keyword heuristic fallback if weights not loaded
-            pos_words = ["rose", "exceeded", "approved", "growth", "profit", "increased", "gain", "higher", "positive"]
-            neg_words = ["loss", "decreased", "dropped", "fell", "missed", "lower", "negative", "down", "slump"]
-            
-            pos_score = sum(1 for w in pos_words if w in text_lower)
-            neg_score = sum(1 for w in neg_words if w in text_lower)
-            
-            if pos_score > neg_score:
-                pred = "positive"
-                probs = [0.05, 0.20, 0.75]
-            elif neg_score > pos_score:
-                pred = "negative"
-                probs = [0.80, 0.15, 0.05]
-            else:
-                pred = "neutral"
-                probs = [0.10, 0.75, 0.15]
-
-        st.success(f"**Predicted Sentiment:** `{pred.upper()}`")
+        model = st.session_state["trained_model"]
+        vocab = st.session_state["vocab"]
+        normalize_numbers = st.session_state["normalize_numbers"]
         
-        # Display probabilities
-        prob_df = pd.DataFrame({
-            "Sentiment": ["Negative", "Neutral", "Positive"],
-            "Probability": probs
-        }).set_index("Sentiment")
+        user_input = st.text_area("Enter a financial news sentence for inference:", "Operating profit increased significantly to 15 million euros .")
         
-        st.bar_chart(prob_df)
-        
-        with st.expander("Tokenization & Normalization Details"):
-            st.write("**Raw Tokens:**", tokenize(user_input, normalize_numbers=False))
-            st.write("**Normalized Tokens (<num>):**", tokens)
+        if st.button("Predict Sentiment", type="primary"):
+            model.eval()
+            tokens = tokenize(user_input, normalize_numbers=normalize_numbers)
+            tensor_seq = encode(user_input, vocab, max_length=128, normalize_numbers=normalize_numbers).unsqueeze(0).to(DEVICE)
+            length = torch.tensor([len(tensor_seq[0])], dtype=torch.long)
+            
+            with torch.inference_mode():
+                logits = model(tensor_seq, length)
+                probs = logits.softmax(dim=1).cpu().numpy()[0]
+                pred_idx = probs.argmax()
+                pred_label = LABELS[pred_idx]
+            
+            st.success(f"**Predicted Sentiment:** `{pred_label.upper()}`")
+            
+            prob_df = pd.DataFrame({
+                "Sentiment": [l.capitalize() for l in LABELS],
+                "Probability": probs
+            }).set_index("Sentiment")
+            st.bar_chart(prob_df)
 
 # ================= PAGE 4: RESULTS =================
-elif page == "📈 Results & Comparison":
-    st.markdown('<p class="main-header">Results & Model Comparison</p>', unsafe_allow_html=True)
-    st.markdown("Performance comparison across all iterative development steps on the held-out test set.")
-
-    results_table = pd.DataFrame({
-        "Model": [
-            "M1 Baseline",
-            "M2 + Pooling & Numbers",
-            "M3 + Regularisation",
-            "M4 + Tuned WD & Batch (Final)"
-        ],
-        "Best Epoch": [12, 8, 15, 8],
-        "Val Macro-F1": [0.683, 0.698, 0.705, 0.704],
-        "Test Accuracy": [0.738, 0.721, 0.749, 0.758],
-        "Test Macro-F1": [0.671, 0.655, 0.697, 0.702],
-        "Negative F1": [0.570, 0.541, 0.619, 0.635],
-        "Neutral F1": [0.819, 0.804, 0.819, 0.833],
-        "Positive F1": [0.625, 0.621, 0.651, 0.639]
-    }).set_index("Model")
-
-    st.dataframe(results_table.style.highlight_max(axis=0, color='lightgreen'), use_container_width=True)
-
-    st.markdown("### 🔑 Key Takeaways")
-    st.markdown("""
-    1. **Macro-F1 is Key:** Because the dataset is imbalanced (~59% neutral), accuracy alone is misleading. Macro-F1 measures unweighted average performance across all three classes.
-    2. **Regularisation Works:** Adding embedding dropout and weight decay (Model 3 & 4) successfully stopped overfitting, lifting test macro-F1 from `0.671` to `0.702`.
-    3. **Minority Class Gains:** The final model significantly improved recall and F1 on minority classes (*Negative* F1 increased from `0.570` to `0.635`).
-    """)
-
-    st.markdown("### 📊 Confusion Matrix Preview (Final Model)")
-    # Sample confusion matrix plot
-    cm = np.array([
-        [54, 20, 16],
-        [17, 367, 46],
-        [9, 73, 122]
-    ])
-    fig, ax = plt.subplots(figsize=(5, 4))
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=LABELS)
-    disp.plot(ax=ax, cmap="Blues", colorbar=False)
-    ax.set_title("Test Confusion Matrix (Final Model)")
-    st.pyplot(fig)
+elif page == "📈 Results Evaluation":
+    st.markdown('<p class="main-header">Evaluation & Performance Metrics</p>', unsafe_allow_html=True)
+    if "trained_model" not in st.session_state:
+        st.info("Train a model first under **'🚀 Dynamic Model Training'** to view test evaluation metrics.")
+    else:
+        model = st.session_state["trained_model"]
+        vocab = st.session_state["vocab"]
+        normalize_numbers = st.session_state["normalize_numbers"]
+        
+        test_loader = torch.utils.data.DataLoader(
+            TextDataset(test_rows, vocab, 128, normalize_numbers),
+            batch_size=32, shuffle=False, collate_fn=collate
+        )
+        
+        model.eval()
+        targets, preds = [], []
+        with torch.inference_mode():
+            for tokens, lengths, labels in test_loader:
+                tokens, labels = tokens.to(DEVICE), labels.to(DEVICE)
+                logits = model(tokens, lengths)
+                preds.extend(logits.argmax(dim=1).cpu().numpy())
+                targets.extend(labels.cpu().numpy())
+        
+        st.metric("Test Accuracy", f"{accuracy_score(targets, preds):.3f}")
+        st.metric("Test Macro-F1", f"{f1_score(targets, preds, average='macro'):.3f}")
+        
+        st.text("Classification Report:")
+        st.text(classification_report(targets, preds, target_names=LABELS))
+        
+        fig, ax = plt.subplots(figsize=(5, 4))
+        cm = confusion_matrix(targets, preds)
+        ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=LABELS).plot(ax=ax, cmap="Blues", colorbar=False)
+        ax.set_title("Test Confusion Matrix")
+        st.pyplot(fig)
