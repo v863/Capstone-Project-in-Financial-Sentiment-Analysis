@@ -13,8 +13,8 @@ import csv
 from pathlib import Path
 
 st.set_page_config(
-    page_title="Financial Sentiment Analysis (Dynamic)",
-    page_icon="📈",
+    page_title="Financial Sentiment Analysis",
+    page_icon="📊",
     layout="wide"
 )
 
@@ -25,6 +25,11 @@ st.markdown("""
     .sub-header { font-size: 1.2rem; color: #555555; }
 </style>
 """, unsafe_allow_html=True)
+
+# --- TITLE & HEADER ---
+st.title("📊 Financial Sentiment Analysis Using Deep Learning Models")
+st.markdown('<p class="sub-header">A BiLSTM trained from scratch — baseline to step-by-step improvements.</p>', unsafe_allow_html=True)
+st.markdown("---")
 
 # --- REPRODUCIBILITY & DEVICE ---
 SEED = 42
@@ -82,7 +87,6 @@ def load_and_preprocess_data():
     data_path = next((path for path in SEARCH_PATHS if path.exists()), None)
     
     if data_path is None:
-        # Fallback mock data if file doesn't exist yet
         data = [
             ("Operating profit rose to EUR 13.1 mn from EUR 8.7 mn .", "positive"),
             ("The international electronic industry company Elcoteq has laid off tens of employees from its Tallinn facility .", "negative"),
@@ -92,7 +96,7 @@ def load_and_preprocess_data():
             ("Trading remained stable throughout the morning session .", "neutral"),
             ("Operating loss narrowed down significantly over the fiscal year .", "positive"),
             ("Revenues decreased less than expected by financial analysts .", "negative")
-        ] * 100 # Multiply to have enough rows for batching
+        ] * 100 
         df_raw = pd.DataFrame(data, columns=["text", "label"])
     else:
         raw = Path(data_path).read_bytes()
@@ -106,7 +110,6 @@ def load_and_preprocess_data():
         rows = [(r[1].strip(), r[0].strip().lower()) for r in records if len(r) == 2]
         df_raw = pd.DataFrame(rows, columns=["text", "label"])
 
-    # Clean duplicates & conflicts
     keys = df_raw["text"].map(lambda t: tuple(tokenize(t)))
     labels_per_text = df_raw.groupby(keys)["label"].nunique()
     conflicting = set(labels_per_text[labels_per_text > 1].index)
@@ -119,7 +122,6 @@ LABELS = sorted(df["label"].unique())
 LABEL_IDS = {l: i for i, l in enumerate(LABELS)}
 CLASS_COLORS = {"negative": "#d62728", "neutral": "#8c8c8c", "positive": "#2ca02c"}
 
-# Stratified Split function
 def stratified_split(rows, validation_fraction=0.15, test_fraction=0.15, seed=SEED):
     by_label = defaultdict(list)
     for row in rows:
@@ -142,7 +144,6 @@ rows = list(zip(df["text"], df["label"]))
 train_rows, val_rows, test_rows = stratified_split(rows)
 SPLITS = {"train": train_rows, "validation": val_rows, "test": test_rows}
 
-# --- VOCAB & DATASET HELPERS ---
 def build_vocab(train_rows, normalize_numbers=False, min_frequency=1, max_vocab=30000):
     counts = Counter(tok for text, _ in train_rows for tok in tokenize(text, normalize_numbers))
     vocab = {"<pad>": 0, "<unk>": 1}
@@ -179,13 +180,12 @@ page = st.sidebar.radio("Go to:", [
 ])
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 **Dynamic Deep Learning App**\nTrain PyTorch BiLSTMs live inside Streamlit!")
+st.sidebar.info("""💡 **Dynamic Deep Learning App**
+Train PyTorch BiLSTMs live inside Streamlit!""")
 
 # ================= PAGE 1: EDA =================
 if page == "📊 Dataset Overview & EDA":
-    st.markdown('<p class="main-header">Financial Sentiment Analysis Dataset</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Exploratory Data Analysis on cleaned financial text data.</p>', unsafe_allow_html=True)
-    
+    st.markdown("### Dataset Overview")
     col1, col2, col3 = st.columns(3)
     col1.metric("Clean Sentences", f"{len(df):,}")
     col2.metric("Train Split", f"{len(train_rows):,}")
@@ -202,7 +202,7 @@ if page == "📊 Dataset Overview & EDA":
 
 # ================= PAGE 2: TRAINING =================
 elif page == "🚀 Dynamic Model Training":
-    st.markdown('<p class="main-header">Train BiLSTM Model Live</p>', unsafe_allow_html=True)
+    st.markdown("### Train BiLSTM Model Live")
     st.markdown("Configure hyperparameters and train a bidirectional LSTM network from scratch.")
 
     col1, col2 = st.columns(2)
@@ -223,10 +223,6 @@ elif page == "🚀 Dynamic Model Training":
         )
         val_loader = torch.utils.data.DataLoader(
             TextDataset(val_rows, vocab, 128, normalize_numbers),
-            batch_size=batch_size, shuffle=False, collate_fn=collate
-        )
-        test_loader = torch.utils.data.DataLoader(
-            TextDataset(test_rows, vocab, 128, normalize_numbers),
             batch_size=batch_size, shuffle=False, collate_fn=collate
         )
 
@@ -275,13 +271,11 @@ elif page == "🚀 Dynamic Model Training":
 
         st.success("Training Completed Successfully!")
         
-        # Save model and artifacts into session state for inference use
         st.session_state["trained_model"] = model
         st.session_state["vocab"] = vocab
         st.session_state["normalize_numbers"] = normalize_numbers
         st.session_state["pooling_type"] = pooling_type
 
-        # Plot training curves
         df_hist = pd.DataFrame(history)
         fig, ax = plt.subplots(figsize=(8, 3.5))
         ax.plot(df_hist["epoch"], df_hist["train_loss"], label="Train Loss", marker="o")
@@ -293,7 +287,7 @@ elif page == "🚀 Dynamic Model Training":
 
 # ================= PAGE 3: INFERENCE =================
 elif page == "🔮 Live Model Inference":
-    st.markdown('<p class="main-header">Dynamic Model Inference</p>', unsafe_allow_html=True)
+    st.markdown("### Dynamic Model Inference")
     
     if "trained_model" not in st.session_state:
         st.warning("⚠️ No trained model found in session state! Please go to **'🚀 Dynamic Model Training'** and click 'Start Live Training' first.")
@@ -326,7 +320,7 @@ elif page == "🔮 Live Model Inference":
 
 # ================= PAGE 4: RESULTS =================
 elif page == "📈 Results Evaluation":
-    st.markdown('<p class="main-header">Evaluation & Performance Metrics</p>', unsafe_allow_html=True)
+    st.markdown("### Evaluation & Performance Metrics")
     if "trained_model" not in st.session_state:
         st.info("Train a model first under **'🚀 Dynamic Model Training'** to view test evaluation metrics.")
     else:
